@@ -1,0 +1,125 @@
+defmodule ExGrok.ClientTest do
+  use ExUnit.Case, async: true
+
+  alias ExGrok.{Client, Fixtures}
+
+  @stub_name :client_test_stub
+
+  describe "new/2" do
+    test "creates a Req.Request struct" do
+      client = Fixtures.test_client(@stub_name)
+      assert %Req.Request{} = client
+    end
+
+    test "attaches auth step" do
+      client = Fixtures.test_client(@stub_name)
+      assert Keyword.has_key?(client.request_steps, :grok_auth)
+    end
+  end
+
+  describe "base_url/0" do
+    test "returns default base URL" do
+      assert Client.base_url() == "https://api.x.ai/v1"
+    end
+  end
+
+  describe "timeout/0" do
+    test "returns default timeout" do
+      assert Client.timeout() == 120_000
+    end
+  end
+
+  describe "handle_response/1" do
+    test "handles 200 success" do
+      body = %{"data" => "test"}
+
+      assert {:ok, ^body} =
+               Client.handle_response({:ok, %Req.Response{status: 200, body: body}})
+    end
+
+    test "handles 201 success" do
+      body = %{"created" => true}
+
+      assert {:ok, ^body} =
+               Client.handle_response({:ok, %Req.Response{status: 201, body: body}})
+    end
+
+    test "handles 401 unauthorized" do
+      assert {:error, :unauthorized} =
+               Client.handle_response({:ok, %Req.Response{status: 401, body: %{}}})
+    end
+
+    test "handles 403 forbidden" do
+      assert {:error, :forbidden} =
+               Client.handle_response({:ok, %Req.Response{status: 403, body: %{}}})
+    end
+
+    test "handles 404 not found" do
+      assert {:error, :not_found} =
+               Client.handle_response({:ok, %Req.Response{status: 404, body: %{}}})
+    end
+
+    test "handles 429 rate limited" do
+      assert {:error, :rate_limited} =
+               Client.handle_response({:ok, %Req.Response{status: 429, body: %{}}})
+    end
+
+    test "handles 400 with OpenAI error format" do
+      body = Fixtures.sample_error_response()
+
+      assert {:error, {:api_error, 400, "Invalid API key provided"}} =
+               Client.handle_response({:ok, %Req.Response{status: 400, body: body}})
+    end
+
+    test "handles 500 server error" do
+      body = %{"error" => %{"message" => "Internal server error"}}
+
+      assert {:error, {:api_error, 500, "Internal server error"}} =
+               Client.handle_response({:ok, %Req.Response{status: 500, body: body}})
+    end
+
+    test "handles connection error" do
+      assert {:error, {:connection_error, :timeout}} =
+               Client.handle_response({:error, :timeout})
+    end
+
+    test "handles unknown error body format" do
+      body = "not json"
+
+      assert {:error, {:api_error, 400, "Unknown error"}} =
+               Client.handle_response({:ok, %Req.Response{status: 400, body: body}})
+    end
+  end
+
+  describe "healthcheck/1" do
+    test "returns :ok on success" do
+      Req.Test.expect(@stub_name, fn conn ->
+        assert conn.request_path == "/v1/models"
+        Req.Test.json(conn, Fixtures.sample_models_response())
+      end)
+
+      client = Fixtures.test_client(@stub_name)
+      assert :ok = Client.healthcheck(client)
+    end
+
+    test "returns error on 401" do
+      Req.Test.expect(@stub_name, fn conn ->
+        conn
+        |> Plug.Conn.put_status(401)
+        |> Req.Test.json(Fixtures.sample_error_response())
+      end)
+
+      client = Fixtures.test_client(@stub_name)
+      assert {:error, :unauthorized} = Client.healthcheck(client)
+    end
+  end
+
+  describe "verify_credentials/1" do
+    test "returns error for invalid key" do
+      # verify_credentials creates its own client internally (no plug option),
+      # so it hits the real API. We just validate it returns a proper error tuple.
+      result = Client.verify_credentials("xai-invalid-test-key")
+      assert {:error, _reason} = result
+    end
+  end
+end
