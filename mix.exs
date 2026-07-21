@@ -1,7 +1,7 @@
 defmodule ExGrok.MixProject do
   use Mix.Project
 
-  @version "0.1.0"
+  @version "0.2.0"
   @source_url "https://github.com/drdray1/ex_grok"
 
   def project do
@@ -59,6 +59,7 @@ defmodule ExGrok.MixProject do
       groups_for_modules: [
         "REST API": [
           ExGrok.Chat,
+          ExGrok.Responses,
           ExGrok.Models,
           ExGrok.Images
         ],

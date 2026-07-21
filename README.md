@@ -35,6 +35,44 @@ content = ExGrok.extract_content(response)
 ], temperature: 0.7, max_tokens: 200)
 ```
 
+## Responses API (`/v1/responses`)
+
+xAI's newer, agent-oriented interface. Takes an `input` list and returns a typed
+`output` list (`reasoning`, `message`, `function_call`) — with first-class
+support for reasoning models and multi-turn tool calling.
+
+```elixir
+{:ok, resp} = ExGrok.Responses.create(client, "grok-4.5", [
+  ExGrok.Responses.system_input("You are a helpful assistant."),
+  ExGrok.Responses.user_input("What is 2 + 2?")
+], reasoning_effort: "high")
+
+ExGrok.Responses.extract_output_text(resp)
+# => "4"
+```
+
+Tool calling (stateless full-input replay):
+
+```elixir
+tools = [ExGrok.Responses.function_tool("get_weather", "Get weather", schema)]
+{:ok, resp} = ExGrok.Responses.create(client, "grok-4.5", input, tools: tools)
+
+case ExGrok.Responses.extract_function_calls(resp) do
+  [] ->
+    ExGrok.Responses.extract_output_text(resp)
+
+  calls ->
+    outputs =
+      Enum.map(calls, fn c ->
+        ExGrok.Responses.function_call_output(c["call_id"], run(c))
+      end)
+
+    # re-send the input + the model's own output items + the tool outputs:
+    new_input = input ++ ExGrok.Responses.extract_output_items(resp) ++ outputs
+    ExGrok.Responses.create(client, "grok-4.5", new_input, tools: tools)
+end
+```
+
 ## Streaming
 
 ```elixir

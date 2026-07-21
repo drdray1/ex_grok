@@ -185,6 +185,64 @@ defmodule ExGrok.Fixtures do
   end
 
   # ===========================================================================
+  # Responses API (/v1/responses)
+  # ===========================================================================
+
+  def sample_response_text do
+    %{
+      "id" => "resp-test-123",
+      "object" => "response",
+      "model" => "grok-4.5",
+      "status" => "completed",
+      "output" => [
+        %{
+          "type" => "reasoning",
+          "id" => "rs_1",
+          "status" => "completed",
+          "summary" => [%{"type" => "summary_text", "text" => "Thinking it through..."}]
+        },
+        %{
+          "type" => "message",
+          "id" => "msg_1",
+          "role" => "assistant",
+          "status" => "completed",
+          "content" => [%{"type" => "output_text", "text" => "Hello there", "annotations" => []}]
+        }
+      ],
+      "usage" => %{"input_tokens" => 10, "output_tokens" => 20, "total_tokens" => 30}
+    }
+  end
+
+  def sample_response_function_call do
+    %{
+      "id" => "resp-tool-123",
+      "object" => "response",
+      "model" => "grok-4.5",
+      "status" => "completed",
+      "output" => [
+        %{"type" => "reasoning", "id" => "rs_2", "status" => "completed", "summary" => []},
+        %{
+          "type" => "function_call",
+          "id" => "fc_1",
+          "call_id" => "call_abc123",
+          "name" => "get_weather",
+          "arguments" => Jason.encode!(%{"location" => "San Francisco"})
+        }
+      ],
+      "usage" => %{"input_tokens" => 15, "output_tokens" => 25, "total_tokens" => 40}
+    }
+  end
+
+  def sample_response_sse_data do
+    [
+      ~s(data: {"type":"response.output_text.delta","delta":"Hello"}\n\n),
+      ~s(data: {"type":"response.output_text.delta","delta":" world"}\n\n),
+      ~s(data: {"type":"response.completed","response":{"id":"resp-1"}}\n\n)
+    ]
+    |> Enum.join()
+  end
+
+  # ===========================================================================
   # Models Responses
   # ===========================================================================
 

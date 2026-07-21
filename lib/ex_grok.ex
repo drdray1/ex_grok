@@ -37,7 +37,7 @@ defmodule ExGrok do
         ]
   """
 
-  alias ExGrok.{Chat, Client, Images, Models}
+  alias ExGrok.{Chat, Client, Images, Models, Responses}
 
   # ============================================================================
   # Client
@@ -126,6 +126,30 @@ defmodule ExGrok do
 
   @doc "Builds a tool result message map."
   defdelegate tool_result_message(tool_call_id, content), to: Chat
+
+  # ============================================================================
+  # Responses API (/v1/responses)
+  # ============================================================================
+
+  @doc "Creates a response via the Responses API with a params map."
+  defdelegate create_response(client, params), to: Responses, as: :create
+
+  @doc "Creates a response via the Responses API with model, input, and options."
+  def create_response(client, model, input, opts \\ []) do
+    Responses.create(client, model, input, opts)
+  end
+
+  @doc "Streams a response via the Responses API."
+  defdelegate stream_response(client, params, callback), to: Responses, as: :stream
+
+  @doc "Extracts concatenated output text from a Responses API response."
+  defdelegate extract_output_text(response), to: Responses
+
+  @doc "Extracts function-call items from a Responses API response."
+  defdelegate extract_function_calls(response), to: Responses
+
+  @doc "Extracts the raw output items from a Responses API response."
+  defdelegate extract_output_items(response), to: Responses
 
   # ============================================================================
   # Models
