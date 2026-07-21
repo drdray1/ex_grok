@@ -2,7 +2,7 @@
 
 Elixir client for the [xAI Grok API](https://docs.x.ai/).
 
-Covers the full HTTP surface: chat completions, the agentic Responses API (server-side + MCP tools, structured output, vision, stateful/background), image and video generation, audio (TTS/STT), Files & Collections storage, models, and per-request usage/cost stats. Realtime Voice Agent (WebSocket) is a planned follow-up.
+Covers the full xAI surface: chat completions, the agentic Responses API (server-side + MCP tools, structured output, vision, stateful/background), image and video generation, audio (TTS/STT), the realtime Voice Agent (WebSocket), Files & Collections storage, models, and per-request usage/cost stats.
 
 ## Installation
 
@@ -324,6 +324,42 @@ ExGrok.Responses.create(client, "grok-4.5", input, tools: [
 Per-request token and cost stats are available through `ExGrok.Usage`
 (see the Usage section above).
 
+## Realtime Voice Agent (WebSocket)
+
+A bidirectional voice session over `wss://api.x.ai/v1/realtime`. Build events
+with the pure `ExGrok.Realtime` codec and drive the socket with
+`ExGrok.Realtime.Connection` (a `Mint.WebSocket` GenServer):
+
+```elixir
+alias ExGrok.Realtime
+
+{:ok, conn} =
+  ExGrok.realtime_connect(
+    api_key: System.fetch_env!("XAI_API_KEY"),
+    on_event: fn event ->
+      case Realtime.audio_delta(event) do
+        nil -> :ok
+        b64 -> play(Base.decode64!(b64))   # streamed assistant audio
+      end
+    end
+  )
+
+ExGrok.Realtime.Connection.send_event(conn, Realtime.session_update(%{
+  "voice" => "eve",
+  "instructions" => "You are a helpful assistant.",
+  "turn_detection" => %{"type" => "server_vad"}
+}))
+
+ExGrok.Realtime.Connection.append_audio(conn, mic_chunk)  # stream mic PCM up
+ExGrok.Realtime.Connection.commit(conn)                    # end the turn
+ExGrok.Realtime.Connection.create_response(conn)           # ask for a reply
+```
+
+The codec (`session_update/1`, `append_audio_event/1`, `commit_event/0`,
+`create_response_event/1`, `text_item/1`, `function_call_output/2`,
+`parse_event/1`, `audio_delta/1`) is pure and unit-tested; the connection
+handles the live socket.
+
 ## Configuration
 
 All configuration is optional. Sensible defaults are provided:
@@ -350,12 +386,11 @@ config :ex_grok,
 | `ExGrok.Audio` | Text-to-speech and speech-to-text |
 | `ExGrok.Files` | Files API — upload/list/get/download/delete |
 | `ExGrok.Collections` | Collections management (Management API) + document search |
+| `ExGrok.Realtime` | Realtime Voice Agent event codec (pure) |
+| `ExGrok.Realtime.Connection` | Realtime Voice Agent WebSocket connection |
 | `ExGrok.Streaming` | SSE parsing utilities |
 | `ExGrok.Client` | HTTP client, management client, and response handling |
 | `ExGrok.Auth` | Bearer token authentication (Req plugin) |
-
-> **Not yet included:** realtime Voice Agent and streaming TTS/STT (WebSocket
-> protocols) — planned as a follow-up.
 
 ## Testing
 

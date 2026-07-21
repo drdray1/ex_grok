@@ -281,6 +281,14 @@ defmodule ExGrok do
   @doc "Extracts the transcript text from an STT response."
   defdelegate extract_transcript(response), to: Audio
 
+  @doc """
+  Opens a realtime Voice Agent WebSocket session.
+
+  See `ExGrok.Realtime.Connection` for options and `ExGrok.Realtime` for the
+  event builders/parsers.
+  """
+  defdelegate realtime_connect(opts), to: ExGrok.Realtime.Connection, as: :connect
+
   # ============================================================================
   # Files & Collections
   # ============================================================================

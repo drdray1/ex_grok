@@ -1,7 +1,7 @@
 defmodule ExGrok.MixProject do
   use Mix.Project
 
-  @version "0.4.0"
+  @version "0.5.0"
   @source_url "https://github.com/drdray1/ex_grok"
 
   def project do
@@ -13,7 +13,10 @@ defmodule ExGrok.MixProject do
       deps: deps(),
       elixirc_paths: elixirc_paths(Mix.env()),
       test_coverage: [
-        ignore_modules: [ExGrok.Fixtures, ExGrok.Application],
+        # ExGrok.Realtime.Connection is a live Mint.WebSocket GenServer that
+        # cannot run without a socket server; its pure codec (ExGrok.Realtime)
+        # is unit-tested instead.
+        ignore_modules: [ExGrok.Fixtures, ExGrok.Application, ExGrok.Realtime.Connection],
         summary: [threshold: 88]
       ],
 
@@ -43,6 +46,7 @@ defmodule ExGrok.MixProject do
       {:req, "~> 0.5"},
       {:jason, "~> 1.4"},
       {:plug, "~> 1.14"},
+      {:mint_web_socket, "~> 1.0"},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
     ]
@@ -77,6 +81,10 @@ defmodule ExGrok.MixProject do
         ],
         Streaming: [
           ExGrok.Streaming
+        ],
+        Realtime: [
+          ExGrok.Realtime,
+          ExGrok.Realtime.Connection
         ],
         Client: [
           ExGrok.Client
