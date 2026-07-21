@@ -86,4 +86,29 @@ defmodule ExGrok.AudioTest do
       assert File.read!(path) == "abc"
     end
   end
+
+  describe "transcribe from a local file" do
+    test "reads the file and uploads it by basename" do
+      path = Path.join(System.tmp_dir!(), "ex_grok_stt_input.wav")
+      File.write!(path, "WAVDATA")
+      on_exit(fn -> File.rm(path) end)
+
+      Req.Test.expect(@stub_name, fn conn ->
+        {:ok, body, _conn} = Plug.Conn.read_body(conn)
+        assert body =~ "ex_grok_stt_input.wav"
+        assert body =~ "WAVDATA"
+        Req.Test.json(conn, Fixtures.sample_transcript())
+      end)
+
+      client = Fixtures.test_client(@stub_name)
+      assert {:ok, _} = Audio.transcribe(client, {:file, path})
+    end
+  end
+
+  describe "extract_transcript/1" do
+    test "handles transcript key and nil" do
+      assert Audio.extract_transcript(%{"transcript" => "hey"}) == "hey"
+      assert Audio.extract_transcript(%{}) == nil
+    end
+  end
 end

@@ -145,6 +145,50 @@ defmodule ExGrok.ResponsesTest do
     end
   end
 
+  describe "stream/3 error mapping" do
+    test "maps 401 / 429 / api_error" do
+      for {status, expected} <- [{401, :unauthorized}, {429, :rate_limited}] do
+        Req.Test.expect(@stub_name, fn conn ->
+          conn |> Plug.Conn.put_status(status) |> Req.Test.json(%{})
+        end)
+
+        client = Fixtures.test_client(@stub_name)
+
+        assert {:error, ^expected} =
+                 Responses.stream(client, %{"model" => "grok-4.5", "input" => "hi"}, fn _ ->
+                   :ok
+                 end)
+      end
+
+      Req.Test.expect(@stub_name, fn conn ->
+        conn |> Plug.Conn.put_status(500) |> Req.Test.json(Fixtures.sample_error_response())
+      end)
+
+      client = Fixtures.test_client(@stub_name)
+
+      assert {:error, {:api_error, 500, _}} =
+               Responses.stream(client, %{"model" => "grok-4.5", "input" => "hi"}, fn _ -> :ok end)
+    end
+  end
+
+  describe "extractor nil/empty branches" do
+    test "all extractors are total on unexpected shapes" do
+      assert Responses.extract_output_text(%{}) == nil
+      assert Responses.extract_reasoning(%{}) == nil
+      assert Responses.extract_annotations(%{}) == []
+      assert Responses.extract_server_tool_calls(%{}) == []
+      assert Responses.extract_output_items(%{}) == []
+      assert Responses.extract_usage(%{}) == nil
+      assert Responses.extract_response_id(%{}) == nil
+      assert Responses.extract_status(%{}) == nil
+      assert Responses.delta_text(%{"type" => "other"}) == nil
+      assert Responses.reasoning_delta(%{}) == nil
+      assert Responses.function_call_arguments_delta(%{}) == nil
+      assert Responses.completed_response(%{}) == nil
+      assert Responses.event_type(%{}) == nil
+    end
+  end
+
   describe "server-side tool builders" do
     test "web_search_tool with and without config" do
       assert Responses.web_search_tool() == %{"type" => "web_search"}

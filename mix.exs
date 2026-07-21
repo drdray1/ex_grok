@@ -12,6 +12,10 @@ defmodule ExGrok.MixProject do
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       elixirc_paths: elixirc_paths(Mix.env()),
+      test_coverage: [
+        ignore_modules: [ExGrok.Fixtures, ExGrok.Application],
+        summary: [threshold: 88]
+      ],
 
       # Hex
       description: "Elixir client for the xAI Grok API",

@@ -67,5 +67,45 @@ defmodule ExGrok.VideoTest do
       client = Fixtures.test_client(@stub_name)
       assert {:error, :timeout} = Video.poll(client, "vid-req-1", interval_ms: 1, max_attempts: 3)
     end
+
+    test "propagates an error from get/2" do
+      Req.Test.stub(@stub_name, fn conn ->
+        conn |> Plug.Conn.put_status(404) |> Req.Test.json(%{})
+      end)
+
+      client = Fixtures.test_client(@stub_name)
+      assert {:error, :not_found} = Video.poll(client, "vid-req-1", interval_ms: 1)
+    end
+  end
+
+  describe "generate/3 with all options + extractor fallbacks" do
+    test "builds every optional param" do
+      Req.Test.expect(@stub_name, fn conn ->
+        {:ok, body, _conn} = Plug.Conn.read_body(conn)
+        params = Jason.decode!(body)
+        assert params["model"] == "grok-imagine-custom"
+        assert params["aspect_ratio"] == "9:16"
+        assert params["resolution"] == "1080p"
+        assert params["reference_images"] == ["https://r/1.jpg"]
+        assert params["video"] == "https://v/base.mp4"
+        Req.Test.json(conn, Fixtures.sample_video_accepted())
+      end)
+
+      client = Fixtures.test_client(@stub_name)
+
+      assert {:ok, _} =
+               Video.generate(client, "edit this",
+                 model: "grok-imagine-custom",
+                 aspect_ratio: "9:16",
+                 resolution: "1080p",
+                 reference_images: ["https://r/1.jpg"],
+                 video: "https://v/base.mp4"
+               )
+    end
+
+    test "extractors return nil when absent" do
+      assert Video.extract_video_url(%{}) == nil
+      assert Video.extract_status(%{}) == nil
+    end
   end
 end

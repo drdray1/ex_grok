@@ -68,4 +68,34 @@ defmodule ExGrok.FilesTest do
       assert {:ok, %{"deleted" => true}} = Files.delete(client, "file-abc123")
     end
   end
+
+  describe "upload with a map option is JSON-encoded in the multipart field" do
+    test "expires_after map" do
+      Req.Test.expect(@stub_name, fn conn ->
+        {:ok, body, _conn} = Plug.Conn.read_body(conn)
+        assert body =~ "expires_after"
+        assert body =~ "days"
+        Req.Test.json(conn, Fixtures.sample_file())
+      end)
+
+      client = Fixtures.test_client(@stub_name)
+
+      assert {:ok, _} =
+               Files.upload(client, {:content, "d", "f.pdf"},
+                 expires_after: %{"anchor" => "created_at", "days" => 7}
+               )
+    end
+  end
+
+  describe "extractors" do
+    test "extract_file_id falls back to file_id and nil" do
+      assert Files.extract_file_id(%{"file_id" => "f2"}) == "f2"
+      assert Files.extract_file_id(%{}) == nil
+    end
+
+    test "extract_files handles files key and nil" do
+      assert Files.extract_files(%{"files" => [1]}) == [1]
+      assert Files.extract_files(%{}) == []
+    end
+  end
 end

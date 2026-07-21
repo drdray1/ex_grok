@@ -225,6 +225,66 @@ defmodule ExGrok.ChatTest do
     end
   end
 
+  describe "stream_completion/4" do
+    test "invokes the callback per SSE chunk and returns :ok" do
+      Req.Test.expect(@stub_name, fn conn ->
+        {:ok, body, _conn} = Plug.Conn.read_body(conn)
+        assert Jason.decode!(body)["stream"] == true
+
+        conn
+        |> Plug.Conn.put_resp_content_type("text/event-stream")
+        |> Plug.Conn.send_resp(200, Fixtures.sample_sse_data())
+      end)
+
+      client = Fixtures.test_client(@stub_name)
+      parent = self()
+
+      assert :ok =
+               Chat.stream_completion(
+                 client,
+                 "grok-3-mini",
+                 [Chat.user_message("hi")],
+                 fn chunk ->
+                   send(parent, {:chunk, chunk})
+                 end
+               )
+
+      assert_receive {:chunk, %{"choices" => _}}
+    end
+
+    test "maps error statuses from the stream" do
+      for {status, expected} <- [{401, :unauthorized}, {429, :rate_limited}] do
+        Req.Test.expect(@stub_name, fn conn ->
+          conn |> Plug.Conn.put_status(status) |> Req.Test.json(%{})
+        end)
+
+        client = Fixtures.test_client(@stub_name)
+
+        assert {:error, ^expected} =
+                 Chat.stream_completion(
+                   client,
+                   %{"model" => "grok-3-mini", "messages" => []},
+                   fn _ -> :ok end
+                 )
+      end
+    end
+
+    test "maps a 400 to an api_error with the message" do
+      Req.Test.expect(@stub_name, fn conn ->
+        conn |> Plug.Conn.put_status(400) |> Req.Test.json(Fixtures.sample_error_response())
+      end)
+
+      client = Fixtures.test_client(@stub_name)
+
+      assert {:error, {:api_error, 400, _msg}} =
+               Chat.stream_completion(
+                 client,
+                 %{"model" => "grok-3-mini", "messages" => []},
+                 fn _ -> :ok end
+               )
+    end
+  end
+
   describe "get_deferred/2" do
     test "returns {:ok, completion} when ready (200)" do
       Req.Test.expect(@stub_name, fn conn ->
