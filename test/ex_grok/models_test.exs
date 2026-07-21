@@ -81,4 +81,13 @@ defmodule ExGrok.ModelsTest do
       assert Models.extract_model_ids(%{}) == []
     end
   end
+
+  describe "known_models/0" do
+    test "includes current Grok models" do
+      known = Models.known_models()
+      assert "grok-4.5" in known
+      assert "grok-4-fast" in known
+      assert "grok-2-image" in known
+    end
+  end
 end

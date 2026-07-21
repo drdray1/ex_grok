@@ -224,4 +224,42 @@ defmodule ExGrok.ChatTest do
              }
     end
   end
+
+  describe "get_deferred/2" do
+    test "returns {:ok, completion} when ready (200)" do
+      Req.Test.expect(@stub_name, fn conn ->
+        assert conn.method == "GET"
+        assert conn.request_path == "/v1/chat/deferred-completion/req-1"
+        Req.Test.json(conn, Fixtures.sample_chat_completion_response())
+      end)
+
+      client = Fixtures.test_client(@stub_name)
+      assert {:ok, completion} = Chat.get_deferred(client, "req-1")
+      assert Chat.extract_content(completion) =~ "meaning of life"
+    end
+
+    test "returns {:pending} while still processing (202)" do
+      Req.Test.expect(@stub_name, fn conn ->
+        Plug.Conn.send_resp(conn, 202, "")
+      end)
+
+      client = Fixtures.test_client(@stub_name)
+      assert {:pending} = Chat.get_deferred(client, "req-1")
+    end
+  end
+
+  describe "deferred option" do
+    test "create_completion/4 forwards deferred: true" do
+      Req.Test.expect(@stub_name, fn conn ->
+        {:ok, body, _conn} = Plug.Conn.read_body(conn)
+        assert Jason.decode!(body)["deferred"] == true
+        Req.Test.json(conn, %{"request_id" => "req-1"})
+      end)
+
+      client = Fixtures.test_client(@stub_name)
+
+      assert {:ok, %{"request_id" => "req-1"}} =
+               Chat.create_completion(client, "grok-4", [Chat.user_message("hi")], deferred: true)
+    end
+  end
 end

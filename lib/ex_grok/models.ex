@@ -32,6 +32,27 @@ defmodule ExGrok.Models do
     |> Client.handle_response()
   end
 
+  # A convenience reference of commonly-available Grok model ids. This is a
+  # static hint for callers; use `list_models/1` for the authoritative,
+  # account-scoped list from the API.
+  @known_models ~w(
+    grok-4.5 grok-4 grok-4-fast grok-code-fast-1
+    grok-3 grok-3-mini grok-2-image
+  )
+
+  @doc """
+  Returns a static reference list of commonly-available Grok model ids.
+
+  This does not hit the API — use `list_models/1` for the authoritative list.
+
+  ## Examples
+
+      iex> "grok-4.5" in ExGrok.Models.known_models()
+      true
+  """
+  @spec known_models() :: list(String.t())
+  def known_models, do: @known_models
+
   @doc """
   Retrieves a single model by ID.
 

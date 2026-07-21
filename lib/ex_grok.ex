@@ -151,6 +151,51 @@ defmodule ExGrok do
   @doc "Extracts the raw output items from a Responses API response."
   defdelegate extract_output_items(response), to: Responses
 
+  @doc "Extracts the reasoning summary text from a Responses API response."
+  defdelegate extract_reasoning(response), to: Responses
+
+  @doc "Extracts server-side search citation URLs from a Responses API response."
+  defdelegate extract_citations(response), to: Responses
+
+  @doc "Extracts server-side tool-call output items from a Responses API response."
+  defdelegate extract_server_tool_calls(response), to: Responses
+
+  @doc "Decodes a Responses API structured output as JSON."
+  defdelegate extract_parsed(response), to: Responses
+
+  @doc "Retrieves a stored/background response by id."
+  defdelegate get_response(client, response_id), to: Responses, as: :get
+
+  @doc "Deletes a stored response by id."
+  defdelegate delete_response(client, response_id), to: Responses, as: :delete
+
+  @doc "Polls a background response by id until it reaches a terminal status."
+  def poll_response(client, response_id, opts \\ []) do
+    Responses.poll(client, response_id, opts)
+  end
+
+  # ============================================================================
+  # Usage
+  # ============================================================================
+
+  @doc "Input/prompt token count from a response's usage."
+  defdelegate usage_input_tokens(source), to: ExGrok.Usage, as: :input_tokens
+
+  @doc "Output/completion token count from a response's usage."
+  defdelegate usage_output_tokens(source), to: ExGrok.Usage, as: :output_tokens
+
+  @doc "Total token count from a response's usage."
+  defdelegate usage_total_tokens(source), to: ExGrok.Usage, as: :total_tokens
+
+  @doc "Reasoning token count from a response's usage."
+  defdelegate usage_reasoning_tokens(source), to: ExGrok.Usage, as: :reasoning_tokens
+
+  @doc "Cached input token count from a response's usage."
+  defdelegate usage_cached_tokens(source), to: ExGrok.Usage, as: :cached_tokens
+
+  @doc "Response cost in USD from a response's usage."
+  defdelegate usage_cost_usd(source), to: ExGrok.Usage, as: :cost_usd
+
   # ============================================================================
   # Models
   # ============================================================================

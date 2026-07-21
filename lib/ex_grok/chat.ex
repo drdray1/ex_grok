@@ -37,7 +37,7 @@ defmodule ExGrok.Chat do
   @type client :: Req.Request.t()
   @type response :: {:ok, map()} | {:error, term()}
 
-  @allowed_opts ~w(temperature top_p max_tokens stop n reasoning_effort response_format tools tool_choice)a
+  @allowed_opts ~w(temperature top_p max_tokens max_completion_tokens stop n reasoning_effort response_format tools tool_choice parallel_tool_calls search_parameters deferred)a
 
   @doc """
   Creates a chat completion with a params map.
@@ -161,6 +161,32 @@ defmodule ExGrok.Chat do
       when is_function(callback, 1) do
     params = build_params(model, messages, [])
     stream_completion(client, params, callback)
+  end
+
+  @doc """
+  Retrieves a deferred chat completion by request id.
+
+  When a completion is created with `deferred: true`, the API returns a
+  `request_id` to poll here (`GET /chat/deferred-completion/:id`). Returns
+  `{:ok, completion}` when ready (HTTP 200) or `{:pending}` while still
+  processing (HTTP 202).
+
+  ## Examples
+
+      {:ok, %{"request_id" => id}} =
+        ExGrok.Chat.create_completion(client, "grok-4", messages, deferred: true)
+
+      case ExGrok.Chat.get_deferred(client, id) do
+        {:ok, completion} -> ExGrok.Chat.extract_content(completion)
+        {:pending} -> :not_ready_yet
+      end
+  """
+  @spec get_deferred(client(), String.t()) :: {:ok, map()} | {:pending} | {:error, term()}
+  def get_deferred(client, request_id) when is_binary(request_id) do
+    case Req.get(client, url: "/chat/deferred-completion/#{request_id}") do
+      {:ok, %Req.Response{status: 202}} -> {:pending}
+      result -> Client.handle_response(result)
+    end
   end
 
   # ===========================================================================

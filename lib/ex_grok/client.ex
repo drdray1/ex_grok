@@ -140,7 +140,12 @@ defmodule ExGrok.Client do
   @doc """
   Handles API response and normalizes to standard format.
   """
-  @spec handle_response({:ok, Req.Response.t()} | {:error, term()}) :: response()
+  @spec handle_response({:ok, Req.Response.t()} | {:error, term()}) ::
+          response() | {:ok, :pending}
+  def handle_response({:ok, %Req.Response{status: 202}}) do
+    {:ok, :pending}
+  end
+
   def handle_response({:ok, %Req.Response{status: status, body: body}}) when status in 200..299 do
     {:ok, body}
   end

@@ -73,6 +73,92 @@ case ExGrok.Responses.extract_function_calls(resp) do
 end
 ```
 
+### Server-side (agentic) tools
+
+Grok runs these tools on xAI's servers — web search, X search, code execution,
+and document (collections) search — and returns citations inline:
+
+```elixir
+{:ok, resp} = ExGrok.Responses.create(client, "grok-4.5", [
+  ExGrok.Responses.user_input("What did xAI announce this week?")
+], tools: [
+  ExGrok.Responses.web_search_tool(allowed_domains: ["x.ai"]),
+  ExGrok.Responses.x_search_tool(),
+  ExGrok.Responses.code_execution_tool()
+])
+
+ExGrok.Responses.extract_output_text(resp)
+ExGrok.Responses.extract_citations(resp)          # => ["https://x.ai", ...]
+ExGrok.Responses.extract_server_tool_calls(resp)  # => [%{"type" => "web_search_call", ...}]
+```
+
+### Structured outputs
+
+```elixir
+schema = %{
+  "type" => "object",
+  "properties" => %{"city" => %{"type" => "string"}, "temp_c" => %{"type" => "number"}},
+  "required" => ["city", "temp_c"]
+}
+
+{:ok, resp} = ExGrok.Responses.create(client, "grok-4.5", input,
+  response_format: ExGrok.Responses.json_schema_format("weather", schema)
+)
+
+{:ok, %{"city" => "Tokyo", "temp_c" => 18}} = ExGrok.Responses.extract_parsed(resp)
+```
+
+### Vision / multimodal input
+
+```elixir
+ExGrok.Responses.create(client, "grok-4.5", [
+  ExGrok.Responses.user_input([
+    ExGrok.Responses.input_text("What is in this image?"),
+    ExGrok.Responses.input_image("https://example.com/photo.jpg", detail: "high")
+  ])
+])
+```
+
+### Stateful & background responses
+
+```elixir
+# Stateful chaining — no need to resend history:
+{:ok, r1} = ExGrok.Responses.create(client, "grok-4.5", input, store: true)
+{:ok, r2} = ExGrok.Responses.create(client, "grok-4.5", next_input,
+  previous_response_id: ExGrok.Responses.extract_response_id(r1))
+
+# Background (async) — create, then poll to completion:
+{:ok, bg} = ExGrok.Responses.create(client, "grok-4.5", input, background: true)
+{:ok, done} = ExGrok.Responses.poll(client, ExGrok.Responses.extract_response_id(bg))
+
+ExGrok.Responses.get(client, id)     # fetch a stored response
+ExGrok.Responses.delete(client, id)  # delete a stored response
+```
+
+Chat completions have an equivalent deferred flow:
+
+```elixir
+{:ok, %{"request_id" => id}} =
+  ExGrok.Chat.create_completion(client, "grok-4", messages, deferred: true)
+
+case ExGrok.Chat.get_deferred(client, id) do
+  {:ok, completion} -> ExGrok.Chat.extract_content(completion)
+  {:pending} -> :not_ready_yet
+end
+```
+
+### Usage & cost
+
+`ExGrok.Usage` reads either API's usage shape (Chat or Responses):
+
+```elixir
+ExGrok.Usage.input_tokens(resp)
+ExGrok.Usage.output_tokens(resp)
+ExGrok.Usage.reasoning_tokens(resp)   # nested output_tokens_details
+ExGrok.Usage.cached_tokens(resp)
+ExGrok.Usage.cost_usd(resp)           # from cost_in_usd_ticks
+```
+
 ## Streaming
 
 ```elixir
@@ -181,7 +267,9 @@ config :ex_grok,
 
 | Module | Description |
 |--------|-------------|
-| `ExGrok.Chat` | Chat completions with streaming and reasoning |
+| `ExGrok.Chat` | Chat completions with streaming, reasoning, and deferred results |
+| `ExGrok.Responses` | Responses API — agentic tools, structured output, vision, stateful/background |
+| `ExGrok.Usage` | Typed token/cost accessors normalizing both API surfaces |
 | `ExGrok.Models` | Model listing and retrieval |
 | `ExGrok.Images` | Image generation and editing |
 | `ExGrok.Streaming` | SSE parsing utilities |

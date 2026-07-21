@@ -242,6 +242,107 @@ defmodule ExGrok.Fixtures do
     |> Enum.join()
   end
 
+  # A response produced with the web_search server-side tool: it carries a
+  # server tool-call output item plus url_citation annotations on the message.
+  def sample_response_with_citations do
+    %{
+      "id" => "resp-search-1",
+      "object" => "response",
+      "model" => "grok-4.5",
+      "status" => "completed",
+      "output" => [
+        %{"type" => "web_search_call", "id" => "ws_1", "status" => "completed"},
+        %{
+          "type" => "message",
+          "id" => "msg_1",
+          "role" => "assistant",
+          "status" => "completed",
+          "content" => [
+            %{
+              "type" => "output_text",
+              "text" => "xAI ships Grok.",
+              "annotations" => [
+                %{"type" => "url_citation", "url" => "https://x.ai", "title" => "xAI"},
+                %{"type" => "url_citation", "url" => "https://docs.x.ai", "title" => "Docs"},
+                %{"type" => "url_citation", "url" => "https://x.ai", "title" => "dup"}
+              ]
+            }
+          ]
+        }
+      ],
+      "usage" => %{
+        "input_tokens" => 20,
+        "output_tokens" => 40,
+        "total_tokens" => 60,
+        "num_sources_used" => 3,
+        "num_server_side_tools_used" => 1
+      }
+    }
+  end
+
+  # A structured-output response: output_text is a JSON document.
+  def sample_response_structured do
+    %{
+      "id" => "resp-json-1",
+      "object" => "response",
+      "model" => "grok-4.5",
+      "status" => "completed",
+      "output" => [
+        %{
+          "type" => "message",
+          "id" => "msg_1",
+          "role" => "assistant",
+          "status" => "completed",
+          "content" => [
+            %{
+              "type" => "output_text",
+              "text" => ~s({"city":"Tokyo","temp_c":18}),
+              "annotations" => []
+            }
+          ]
+        }
+      ],
+      "usage" => %{"input_tokens" => 12, "output_tokens" => 9, "total_tokens" => 21}
+    }
+  end
+
+  # A queued background response (before completion).
+  def sample_response_background_queued do
+    %{
+      "id" => "resp-bg-1",
+      "object" => "response",
+      "model" => "grok-4.5",
+      "status" => "queued",
+      "output" => [],
+      "usage" => nil
+    }
+  end
+
+  # Detailed usage mirroring the real grok-4.5 /responses payload.
+  def sample_response_usage_detailed do
+    %{
+      "input_tokens" => 231,
+      "input_tokens_details" => %{"cached_tokens" => 128},
+      "output_tokens" => 957,
+      "output_tokens_details" => %{"reasoning_tokens" => 594},
+      "total_tokens" => 1188,
+      "num_sources_used" => 0,
+      "num_server_side_tools_used" => 0,
+      "cost_in_usd_ticks" => 59_864_000
+    }
+  end
+
+  # Full Responses SSE stream: reasoning delta, text delta, tool-arg delta, completed.
+  def sample_response_sse_full do
+    [
+      ~s(data: {"type":"response.reasoning_summary_text.delta","delta":"Let me think"}\n\n),
+      ~s(data: {"type":"response.output_text.delta","delta":"Answer"}\n\n),
+      ~s(data: {"type":"response.function_call_arguments.delta","delta":"{\\"a\\":1}"}\n\n),
+      ~s(data: {"type":"response.completed","response":{"id":"resp-9","status":"completed"}}\n\n)
+    ]
+    |> Enum.join()
+  end
+
   # ===========================================================================
   # Models Responses
   # ===========================================================================
