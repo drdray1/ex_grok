@@ -1,7 +1,7 @@
 defmodule ExGrok.MixProject do
   use Mix.Project
 
-  @version "0.3.0"
+  @version "0.4.0"
   @source_url "https://github.com/drdray1/ex_grok"
 
   def project do
@@ -62,6 +62,10 @@ defmodule ExGrok.MixProject do
           ExGrok.Responses,
           ExGrok.Models,
           ExGrok.Images,
+          ExGrok.Video,
+          ExGrok.Audio,
+          ExGrok.Files,
+          ExGrok.Collections,
           ExGrok.Usage
         ],
         Authentication: [

@@ -2,7 +2,7 @@
 
 Elixir client for the [xAI Grok API](https://docs.x.ai/).
 
-Supports chat completions (with streaming and reasoning), model listing, and image generation.
+Covers the full HTTP surface: chat completions, the agentic Responses API (server-side + MCP tools, structured output, vision, stateful/background), image and video generation, audio (TTS/STT), Files & Collections storage, models, and per-request usage/cost stats. Realtime Voice Agent (WebSocket) is a planned follow-up.
 
 ## Installation
 
@@ -250,6 +250,80 @@ urls = ExGrok.extract_image_urls(response)
 )
 ```
 
+## Video Generation (Grok Imagine)
+
+Video generation is asynchronous — start a job, then poll to completion:
+
+```elixir
+{:ok, %{"request_id" => id}} =
+  ExGrok.generate_video(client, "A neon city at night, cinematic", duration: 8)
+
+{:ok, done} = ExGrok.poll_video(client, id)
+ExGrok.extract_video_url(done)
+# => "https://vidgen.x.ai/.../video.mp4"
+
+# Image-to-video
+ExGrok.generate_video(client, "slow pan across the scene",
+  image: "https://example.com/frame.jpg", resolution: "720p")
+```
+
+## Audio (Text-to-Speech & Speech-to-Text)
+
+```elixir
+# TTS -> raw audio bytes
+{:ok, mp3} = ExGrok.speech(client, "Hello from Grok", voice_id: "eve")
+ExGrok.Audio.save(mp3, "hello.mp3")
+
+{:ok, voices} = ExGrok.list_voices(client)
+
+# STT -> transcript
+{:ok, resp} = ExGrok.transcribe(client, {:file, "meeting.wav"}, language: "en")
+ExGrok.extract_transcript(resp)
+```
+
+## Files & Collections
+
+Upload files, group them into a collection, and search them semantically.
+Collection **management** uses a separate Management API key and host:
+
+```elixir
+# Upload (normal client)
+{:ok, file} = ExGrok.upload_file(client, {:file, "report.pdf"}, purpose: "collections")
+file_id = ExGrok.extract_file_id(file)
+
+# Manage collections (management client)
+mgmt = ExGrok.management_client("xai-management-key")
+{:ok, coll} = ExGrok.create_collection(mgmt, "SEC Filings")
+cid = ExGrok.extract_collection_id(coll)
+{:ok, _} = ExGrok.add_document_to_collection(mgmt, cid, file_id)
+
+# Search (normal client, api.x.ai)
+{:ok, results} = ExGrok.search_collection(client, "revenue guidance", collection_ids: [cid])
+ExGrok.Collections.extract_search_results(results)
+```
+
+You can also let Grok search a collection itself, agentically, via the
+`collections_search` server-side tool (see the Responses section).
+
+## Remote MCP Tools
+
+Connect Grok to an external MCP server as a tool in the Responses API:
+
+```elixir
+ExGrok.Responses.create(client, "grok-4.5", input, tools: [
+  ExGrok.mcp_tool("docs", "https://mcp.example.com/sse", allowed_tools: ["search"])
+])
+```
+
+## Account & Stats
+
+```elixir
+{:ok, info} = ExGrok.api_key_info(client)   # key/team/permission metadata
+```
+
+Per-request token and cost stats are available through `ExGrok.Usage`
+(see the Usage section above).
+
 ## Configuration
 
 All configuration is optional. Sensible defaults are provided:
@@ -268,13 +342,20 @@ config :ex_grok,
 | Module | Description |
 |--------|-------------|
 | `ExGrok.Chat` | Chat completions with streaming, reasoning, and deferred results |
-| `ExGrok.Responses` | Responses API — agentic tools, structured output, vision, stateful/background |
+| `ExGrok.Responses` | Responses API — agentic tools (incl. MCP), structured output, vision, stateful/background |
 | `ExGrok.Usage` | Typed token/cost accessors normalizing both API surfaces |
 | `ExGrok.Models` | Model listing and retrieval |
 | `ExGrok.Images` | Image generation and editing |
+| `ExGrok.Video` | Grok Imagine video generation (async) |
+| `ExGrok.Audio` | Text-to-speech and speech-to-text |
+| `ExGrok.Files` | Files API — upload/list/get/download/delete |
+| `ExGrok.Collections` | Collections management (Management API) + document search |
 | `ExGrok.Streaming` | SSE parsing utilities |
-| `ExGrok.Client` | HTTP client and response handling |
+| `ExGrok.Client` | HTTP client, management client, and response handling |
 | `ExGrok.Auth` | Bearer token authentication (Req plugin) |
+
+> **Not yet included:** realtime Voice Agent and streaming TTS/STT (WebSocket
+> protocols) — planned as a follow-up.
 
 ## Testing
 

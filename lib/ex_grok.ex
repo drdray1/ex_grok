@@ -37,7 +37,7 @@ defmodule ExGrok do
         ]
   """
 
-  alias ExGrok.{Chat, Client, Images, Models, Responses}
+  alias ExGrok.{Audio, Chat, Client, Collections, Files, Images, Models, Responses, Video}
 
   # ============================================================================
   # Client
@@ -58,11 +58,17 @@ defmodule ExGrok do
     Client.new(api_key, opts)
   end
 
+  @doc "Creates a client for xAI's Management API (collections management)."
+  defdelegate management_client(management_api_key), to: Client
+
   @doc "Verifies API credentials by making a test request."
   defdelegate verify_credentials(api_key), to: Client
 
   @doc "Performs a health check on the client connection."
   defdelegate healthcheck(client), to: Client
+
+  @doc "Fetches metadata about the API key in use (account/access info)."
+  defdelegate api_key_info(client), to: Client
 
   # ============================================================================
   # Chat Completions
@@ -163,6 +169,9 @@ defmodule ExGrok do
   @doc "Decodes a Responses API structured output as JSON."
   defdelegate extract_parsed(response), to: Responses
 
+  @doc "Builds a remote MCP tool entry for a Responses tools array."
+  defdelegate mcp_tool(server_label, server_url), to: Responses
+
   @doc "Retrieves a stored/background response by id."
   defdelegate get_response(client, response_id), to: Responses, as: :get
 
@@ -231,4 +240,80 @@ defmodule ExGrok do
 
   @doc "Extracts image URLs from response."
   defdelegate extract_image_urls(response), to: Images
+
+  # ============================================================================
+  # Video
+  # ============================================================================
+
+  @doc "Starts an async video generation job; returns a request id."
+  def generate_video(client, prompt, opts \\ []) do
+    Video.generate(client, prompt, opts)
+  end
+
+  @doc "Retrieves a video job by id."
+  defdelegate get_video(client, request_id), to: Video, as: :get
+
+  @doc "Polls a video job by id until it reaches a terminal status."
+  def poll_video(client, request_id, opts \\ []) do
+    Video.poll(client, request_id, opts)
+  end
+
+  @doc "Extracts the generated video URL from a video job."
+  defdelegate extract_video_url(job), to: Video
+
+  # ============================================================================
+  # Audio
+  # ============================================================================
+
+  @doc "Synthesizes speech (text-to-speech); returns audio bytes."
+  def speech(client, text, opts \\ []) do
+    Audio.speech(client, text, opts)
+  end
+
+  @doc "Transcribes audio to text (speech-to-text)."
+  def transcribe(client, source, opts \\ []) do
+    Audio.transcribe(client, source, opts)
+  end
+
+  @doc "Lists available text-to-speech voices."
+  defdelegate list_voices(client), to: Audio, as: :voices
+
+  @doc "Extracts the transcript text from an STT response."
+  defdelegate extract_transcript(response), to: Audio
+
+  # ============================================================================
+  # Files & Collections
+  # ============================================================================
+
+  @doc "Uploads a file to the Files API."
+  def upload_file(client, source, opts \\ []) do
+    Files.upload(client, source, opts)
+  end
+
+  @doc "Lists uploaded files."
+  defdelegate list_files(client), to: Files, as: :list
+
+  @doc "Deletes an uploaded file by id."
+  defdelegate delete_file(client, file_id), to: Files, as: :delete
+
+  @doc "Extracts the file id from a Files API response."
+  defdelegate extract_file_id(response), to: Files
+
+  @doc "Creates a collection (requires a management client)."
+  def create_collection(mgmt_client, name, opts \\ []) do
+    Collections.create(mgmt_client, name, opts)
+  end
+
+  @doc "Adds an uploaded file to a collection (requires a management client)."
+  defdelegate add_document_to_collection(mgmt_client, collection_id, file_id),
+    to: Collections,
+    as: :add_document
+
+  @doc "Searches documents across collections (normal client)."
+  def search_collection(client, query, opts \\ []) do
+    Collections.search(client, query, opts)
+  end
+
+  @doc "Extracts the collection id from a Collections API response."
+  defdelegate extract_collection_id(response), to: Collections
 end

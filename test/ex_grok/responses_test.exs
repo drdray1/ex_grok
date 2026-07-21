@@ -163,6 +163,14 @@ defmodule ExGrok.ResponsesTest do
       assert Responses.collections_search_tool() == %{"type" => "collections_search"}
     end
 
+    test "mcp_tool carries server_label + server_url and merges opts" do
+      tool = Responses.mcp_tool("docs", "https://mcp.example.com/sse", allowed_tools: ["search"])
+      assert tool["type"] == "mcp"
+      assert tool["server_label"] == "docs"
+      assert tool["server_url"] == "https://mcp.example.com/sse"
+      assert tool["allowed_tools"] == ["search"]
+    end
+
     test "server tools pass through create/4 into the tools array" do
       Req.Test.expect(@stub_name, fn conn ->
         {:ok, body, _conn} = Plug.Conn.read_body(conn)

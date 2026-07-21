@@ -122,4 +122,46 @@ defmodule ExGrok.ClientTest do
       assert {:error, _reason} = result
     end
   end
+
+  describe "new/2 base_url override" do
+    test "honors an explicit :base_url" do
+      Req.Test.expect(@stub_name, fn conn ->
+        assert conn.host == "management-api.x.ai"
+        Req.Test.json(conn, %{"ok" => true})
+      end)
+
+      client =
+        "k"
+        |> Client.new(base_url: "https://management-api.x.ai/v1", plug: {Req.Test, @stub_name})
+        |> Req.Request.merge_options(retry: false)
+
+      assert {:ok, %{"ok" => true}} = Client.handle_response(Req.get(client, url: "/ping"))
+    end
+  end
+
+  describe "management_client/2" do
+    test "points at the management host" do
+      Req.Test.expect(@stub_name, fn conn ->
+        assert conn.host == "management-api.x.ai"
+        Req.Test.json(conn, %{"ok" => true})
+      end)
+
+      client =
+        Fixtures.test_management_client(@stub_name)
+
+      assert {:ok, %{"ok" => true}} = Client.handle_response(Req.get(client, url: "/collections"))
+    end
+  end
+
+  describe "api_key_info/1" do
+    test "GETs /api-key" do
+      Req.Test.expect(@stub_name, fn conn ->
+        assert conn.request_path == "/v1/api-key"
+        Req.Test.json(conn, Fixtures.sample_api_key_info())
+      end)
+
+      client = Fixtures.test_client(@stub_name)
+      assert {:ok, %{"api_key_id" => "key-123"}} = Client.api_key_info(client)
+    end
+  end
 end

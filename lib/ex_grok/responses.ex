@@ -423,6 +423,20 @@ defmodule ExGrok.Responses do
   def collections_search_tool(opts \\ []), do: server_tool("collections_search", opts)
 
   @doc """
+  A **remote MCP** tool entry, connecting Grok to an external MCP server.
+
+  `server_label` and `server_url` are required; extra keys (e.g.
+  `allowed_tools`, `headers`, `require_approval`) merge in from `opts`.
+
+      create(client, "grok-4.5", input, tools: [
+        mcp_tool("docs", "https://mcp.example.com/sse", allowed_tools: ["search"])
+      ])
+  """
+  def mcp_tool(server_label, server_url, opts \\ []) do
+    server_tool("mcp", [{:server_label, server_label}, {:server_url, server_url} | opts])
+  end
+
+  @doc """
   A `response_format` value requesting strict JSON-schema structured output.
 
   Pass as `response_format: json_schema_format("name", schema)`. `opts` accepts

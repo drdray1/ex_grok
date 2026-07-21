@@ -19,6 +19,12 @@ defmodule ExGrok.Fixtures do
     |> Req.Request.merge_options(retry: false)
   end
 
+  def test_management_client(stub_name) do
+    "xai-mgmt-test-key"
+    |> ExGrok.Client.management_client(plug: {Req.Test, stub_name})
+    |> Req.Request.merge_options(retry: false)
+  end
+
   # ===========================================================================
   # Chat Completion Responses
   # ===========================================================================
@@ -453,6 +459,76 @@ defmodule ExGrok.Fixtures do
         "type" => "invalid_request_error",
         "code" => "model_not_found"
       }
+    }
+  end
+
+  # ===========================================================================
+  # Video / Audio / Files / Collections / api-key (Wave 2)
+  # ===========================================================================
+
+  def sample_video_accepted, do: %{"request_id" => "vid-req-1", "status" => "pending"}
+
+  def sample_video_pending do
+    %{"request_id" => "vid-req-1", "status" => "pending", "model" => "grok-imagine-video"}
+  end
+
+  def sample_video_done do
+    %{
+      "request_id" => "vid-req-1",
+      "status" => "done",
+      "model" => "grok-imagine-video",
+      "video" => %{"url" => "https://vidgen.x.ai/abc/video.mp4", "duration" => 8}
+    }
+  end
+
+  def sample_tts_timestamps do
+    %{
+      "audio" => Base.encode64("fake-audio-bytes"),
+      "content_type" => "audio/mpeg",
+      "duration" => 0.92,
+      "audio_timestamps" => %{"graph_chars" => ["H", "i"], "graph_times" => [[0.0, 0.1]]}
+    }
+  end
+
+  def sample_voices, do: %{"voices" => [%{"voice_id" => "eve", "name" => "Eve"}]}
+
+  def sample_transcript, do: %{"text" => "hello world", "language" => "en"}
+
+  def sample_file do
+    %{
+      "id" => "file-abc123",
+      "object" => "file",
+      "filename" => "report.pdf",
+      "bytes" => 12_345,
+      "purpose" => "collections",
+      "created_at" => 1_784_600_000
+    }
+  end
+
+  def sample_files_list, do: %{"data" => [sample_file()]}
+
+  def sample_collection do
+    %{
+      "collection_id" => "coll-xyz",
+      "collection_name" => "SEC Filings",
+      "field_definitions" => []
+    }
+  end
+
+  def sample_search_results do
+    %{
+      "results" => [
+        %{"file_id" => "file-abc123", "score" => 0.91, "text" => "revenue guidance ..."}
+      ]
+    }
+  end
+
+  def sample_api_key_info do
+    %{
+      "api_key_id" => "key-123",
+      "name" => "default",
+      "team_id" => "team-9",
+      "acls" => ["api-key:model:*"]
     }
   end
 end

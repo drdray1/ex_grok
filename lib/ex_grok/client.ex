@@ -47,14 +47,17 @@ defmodule ExGrok.Client do
       # Testing with Req.Test
       client = ExGrok.Client.new("xai-test", plug: {Req.Test, MyStub})
   """
+  @management_base_url "https://management-api.x.ai/v1"
+
   @spec new(String.t(), keyword()) :: client()
   def new(api_key, opts \\ []) do
     plug = Keyword.get(opts, :plug)
 
     req_opts =
       [
-        base_url: base_url(),
-        headers: [{"content-type", "application/json"}],
+        base_url: Keyword.get(opts, :base_url, base_url()),
+        # Content-type is set per request by Req (json: → application/json,
+        # form_multipart: → multipart/form-data); don't force it globally.
         receive_timeout: timeout(),
         retry: :transient,
         max_retries: 3,
@@ -64,6 +67,29 @@ defmodule ExGrok.Client do
 
     Req.new(req_opts)
     |> ExGrok.Auth.attach(api_key)
+  end
+
+  @doc """
+  Creates a client for xAI's **Management API** (`management-api.x.ai`).
+
+  Collections management (create/list/delete collections, add/remove documents)
+  lives on this host and requires a separate **Management API key**, distinct
+  from the inference key used by `new/2`.
+
+  ## Options
+
+    - `:plug` - Test plug for `Req.Test`
+    - `:base_url` - override the management base URL
+
+  ## Examples
+
+      mgmt = ExGrok.Client.management_client("xai-mgmt-key")
+      {:ok, coll} = ExGrok.Collections.create(mgmt, "SEC Filings")
+  """
+  @spec management_client(String.t(), keyword()) :: client()
+  def management_client(management_api_key, opts \\ []) do
+    opts = Keyword.put_new(opts, :base_url, @management_base_url)
+    new(management_api_key, opts)
   end
 
   @doc """
@@ -135,6 +161,19 @@ defmodule ExGrok.Client do
       {:error, reason} ->
         {:error, reason}
     end
+  end
+
+  @doc """
+  Fetches metadata about the API key in use (`GET /api-key`).
+
+  Returns key/team/permission details — useful for account and access checks.
+  Per-request token/cost stats are available via `ExGrok.Usage` instead.
+  """
+  @spec api_key_info(client()) :: response()
+  def api_key_info(client) do
+    client
+    |> Req.get(url: "/api-key")
+    |> handle_response()
   end
 
   @doc """
