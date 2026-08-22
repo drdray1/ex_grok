@@ -155,12 +155,11 @@ defmodule ExGrok.Chat do
         IO.inspect(chunk)
       end)
   """
-  @spec stream_completion(client(), String.t(), list(map()), (map() -> any())) ::
+  @spec stream_completion(client(), String.t(), list(map()), (map() -> any()), keyword()) ::
           :ok | {:error, term()}
-  def stream_completion(client, model, messages, callback)
+  def stream_completion(client, model, messages, callback, opts \\ [])
       when is_function(callback, 1) do
-    params = build_params(model, messages, [])
-    stream_completion(client, params, callback)
+    stream_completion(client, build_params(model, messages, opts), callback)
   end
 
   @doc """
@@ -306,6 +305,51 @@ defmodule ExGrok.Chat do
   def tool_result_message(tool_call_id, content) do
     %{"role" => "tool", "tool_call_id" => tool_call_id, "content" => content}
   end
+
+  @doc """
+  A `response_format` value requesting strict JSON-schema structured output.
+
+  Chat completions **nests** `name`, `schema` and `strict` under a
+  `"json_schema"` key. The Responses API is flat under `text.format` instead —
+  `ExGrok.Responses.json_schema/3` builds that one. Sending either shape to the
+  other endpoint is a 400, which is why each module owns its own builder.
+
+      create_completion(client, model, messages,
+        response_format: json_schema_format("invoice", schema)
+      )
+
+  `opts` accepts `strict:` (default `true`) and `description:`.
+  """
+  @spec json_schema_format(String.t(), map(), keyword()) :: map()
+  def json_schema_format(name, schema, opts \\ []) do
+    json_schema =
+      %{"name" => name, "schema" => schema, "strict" => Keyword.get(opts, :strict, true)}
+      |> maybe_put_description(Keyword.get(opts, :description))
+
+    %{"type" => "json_schema", "json_schema" => json_schema}
+  end
+
+  @doc """
+  A function-tool definition in the chat-completions **nested** shape.
+
+  `ExGrok.Responses.function_tool/3` builds the Responses API's flat shape.
+  Passing that one to `/v1/chat/completions` is rejected, so the two live beside
+  the endpoints they belong to.
+  """
+  @spec function_tool(String.t(), String.t(), map()) :: map()
+  def function_tool(name, description, parameters) do
+    %{
+      "type" => "function",
+      "function" => %{
+        "name" => name,
+        "description" => description,
+        "parameters" => parameters
+      }
+    }
+  end
+
+  defp maybe_put_description(map, nil), do: map
+  defp maybe_put_description(map, value), do: Map.put(map, "description", value)
 
   # ===========================================================================
   # Private Helpers

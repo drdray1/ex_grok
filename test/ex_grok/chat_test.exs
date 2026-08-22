@@ -225,6 +225,92 @@ defmodule ExGrok.ChatTest do
     end
   end
 
+  describe "structured output and tool builders" do
+    @schema %{"type" => "object", "properties" => %{"n" => %{"type" => "number"}}}
+
+    test "json_schema_format builds the NESTED chat-completions shape" do
+      fmt = ExGrok.Chat.json_schema_format("invoice", @schema, description: "An invoice")
+
+      assert fmt["type"] == "json_schema"
+      assert fmt["json_schema"]["name"] == "invoice"
+      assert fmt["json_schema"]["schema"] == @schema
+      assert fmt["json_schema"]["strict"] == true
+      assert fmt["json_schema"]["description"] == "An invoice"
+
+      # Flat is the Responses shape and a 400 here. Asserting its absence is
+      # what a presence-only test misses.
+      refute Map.has_key?(fmt, "name")
+      refute Map.has_key?(fmt, "schema")
+    end
+
+    test "strict can be disabled and description omitted" do
+      fmt = ExGrok.Chat.json_schema_format("n", %{}, strict: false)
+      assert fmt["json_schema"]["strict"] == false
+      refute Map.has_key?(fmt["json_schema"], "description")
+    end
+
+    test "function_tool nests under a function key, unlike the Responses one" do
+      chat = ExGrok.Chat.function_tool("get_weather", "Get weather", @schema)
+      responses = ExGrok.Responses.function_tool("get_weather", "Get weather", @schema)
+
+      assert chat["function"]["name"] == "get_weather"
+      assert responses["name"] == "get_weather"
+      refute chat == responses
+      refute Map.has_key?(responses, "function")
+    end
+
+    test "response_format reaches the request body nested" do
+      Req.Test.expect(@stub_name, fn conn ->
+        {:ok, body, _conn} = Plug.Conn.read_body(conn)
+        params = Jason.decode!(body)
+
+        assert params["response_format"]["json_schema"]["name"] == "invoice"
+        # `text` is the Responses spelling and must not appear here.
+        refute Map.has_key?(params, "text")
+
+        Req.Test.json(conn, Fixtures.sample_chat_completion_response())
+      end)
+
+      assert {:ok, _} =
+               Chat.create_completion(
+                 Fixtures.test_client(@stub_name),
+                 "grok-3-mini",
+                 [Chat.user_message("hi")],
+                 response_format: ExGrok.Chat.json_schema_format("invoice", @schema)
+               )
+    end
+  end
+
+  describe "stream_completion/5" do
+    test "forwards options into the streamed body" do
+      # Before this arity existed, the convenience streaming path hard-coded an
+      # empty opts list, so temperature/tools/response_format could not be sent
+      # at all without dropping to a raw params map.
+      Req.Test.expect(@stub_name, fn conn ->
+        {:ok, body, _conn} = Plug.Conn.read_body(conn)
+        params = Jason.decode!(body)
+
+        assert params["stream"] == true
+        assert params["temperature"] == 0.7
+        assert params["response_format"]["json_schema"]["name"] == "invoice"
+
+        conn
+        |> Plug.Conn.put_resp_content_type("text/event-stream")
+        |> Plug.Conn.send_resp(200, Fixtures.sample_sse_data())
+      end)
+
+      assert :ok =
+               Chat.stream_completion(
+                 Fixtures.test_client(@stub_name),
+                 "grok-3-mini",
+                 [Chat.user_message("hi")],
+                 fn _chunk -> :ok end,
+                 temperature: 0.7,
+                 response_format: ExGrok.Chat.json_schema_format("invoice", %{})
+               )
+    end
+  end
+
   describe "stream_completion/4" do
     test "invokes the callback per SSE chunk and returns :ok" do
       Req.Test.expect(@stub_name, fn conn ->

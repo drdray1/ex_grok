@@ -102,7 +102,9 @@ defmodule ExGrok do
         ExGrok.Chat.user_message("Hello")
       ], fn chunk -> IO.inspect(chunk) end)
   """
-  defdelegate stream_completion(client, model, messages, callback), to: Chat
+  def stream_completion(client, model, messages, callback, opts \\ []) do
+    Chat.stream_completion(client, model, messages, callback, opts)
+  end
 
   @doc "Extracts content from the first choice's message."
   defdelegate extract_content(response), to: Chat
@@ -145,8 +147,16 @@ defmodule ExGrok do
     Responses.create(client, model, input, opts)
   end
 
-  @doc "Streams a response via the Responses API."
+  @doc "Streams a response via the Responses API with a params map."
   defdelegate stream_response(client, params, callback), to: Responses, as: :stream
+
+  @doc "Streams a response via the Responses API with model, input, and options."
+  def stream_response(client, model, input, callback, opts \\ []) do
+    Responses.stream(client, model, input, callback, opts)
+  end
+
+  @doc "Builds a Responses API `text` option for strict JSON-schema output."
+  defdelegate json_schema_text(name, schema, opts \\ []), to: Responses
 
   @doc "Extracts concatenated output text from a Responses API response."
   defdelegate extract_output_text(response), to: Responses
@@ -170,7 +180,7 @@ defmodule ExGrok do
   defdelegate extract_parsed(response), to: Responses
 
   @doc "Builds a remote MCP tool entry for a Responses tools array."
-  defdelegate mcp_tool(server_label, server_url), to: Responses
+  defdelegate mcp_tool(server_label, server_url, opts \\ []), to: Responses
 
   @doc "Retrieves a stored/background response by id."
   defdelegate get_response(client, response_id), to: Responses, as: :get

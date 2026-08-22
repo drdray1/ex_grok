@@ -9,7 +9,7 @@ Covers the full xAI surface: chat completions, the agentic Responses API (server
 ```elixir
 def deps do
   [
-    {:ex_grok, git: "https://github.com/drdray1/ex_grok.git", tag: "0.1.0"}
+    {:ex_grok, git: "https://github.com/drdray1/ex_grok.git", tag: "0.6.0"}
   ]
 end
 ```
@@ -94,6 +94,13 @@ ExGrok.Responses.extract_server_tool_calls(resp)  # => [%{"type" => "web_search_
 
 ### Structured outputs
 
+> **The two endpoints take different shapes.** `/v1/responses` wants a flat
+> format map under `text.format`; `/v1/chat/completions` wants the same fields
+> nested under `response_format.json_schema`. Sending one to the other is a 400,
+> so each module builds its own — `ExGrok.Responses.json_schema/3` and
+> `ExGrok.Chat.json_schema_format/3`. Passing `response_format:` to the
+> Responses API raises with the fix in the message.
+
 ```elixir
 schema = %{
   "type" => "object",
@@ -101,12 +108,25 @@ schema = %{
   "required" => ["city", "temp_c"]
 }
 
+# Responses API — text.format
 {:ok, resp} = ExGrok.Responses.create(client, "grok-4.5", input,
-  response_format: ExGrok.Responses.json_schema_format("weather", schema)
+  text: ExGrok.Responses.json_schema_text("weather", schema)
 )
 
 {:ok, %{"city" => "Tokyo", "temp_c" => 18}} = ExGrok.Responses.extract_parsed(resp)
 ```
+
+```elixir
+# Chat Completions — response_format
+{:ok, resp} = ExGrok.create_completion(client, "grok-4.5", messages,
+  response_format: ExGrok.Chat.json_schema_format("weather", schema)
+)
+
+{:ok, %{"city" => "Tokyo"}} = Jason.decode(ExGrok.extract_content(resp))
+```
+
+`json_schema_text/3` is just `%{"format" => json_schema(...)}`; use
+`json_schema/3` directly when you need to put sibling keys in the `text` object.
 
 ### Vision / multimodal input
 
@@ -170,6 +190,16 @@ ExGrok.stream_completion(client, "grok-3-mini", [
     content -> IO.write(content)
   end
 end)
+```
+
+Options work on the streaming path too, and on the Responses API:
+
+```elixir
+ExGrok.stream_completion(client, "grok-3-mini", messages, callback, temperature: 0.7)
+
+ExGrok.stream_response(client, "grok-4.5", input, callback,
+  text: ExGrok.Responses.json_schema_text("weather", schema)
+)
 ```
 
 Or with a params map:
@@ -371,6 +401,21 @@ config :ex_grok,
     base_url: "https://api.x.ai/v1",   # default
     timeout: 120_000                     # default (2 minutes)
   ]
+```
+
+## Unknown options
+
+Both `ExGrok.Chat` and `ExGrok.Responses` validate their keyword options and
+raise `ArgumentError` on anything they do not recognise, naming the equivalent
+where one exists (`max_tokens` → `max_output_tokens`, `response_format` → `text`).
+Previously unknown options were silently discarded, which is quieter than a 400:
+the request succeeds having ignored what you asked for.
+
+To send a parameter this client does not know about yet, use `:extra_params` —
+a map merged verbatim into the request body, so strictness is never a dead end:
+
+```elixir
+ExGrok.Responses.create(client, "grok-4.5", input, extra_params: %{"new_param" => 1})
 ```
 
 ## API Modules

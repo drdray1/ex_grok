@@ -1,7 +1,7 @@
 defmodule ExGrok.MixProject do
   use Mix.Project
 
-  @version "0.5.0"
+  @version "0.6.0"
   @source_url "https://github.com/drdray1/ex_grok"
 
   def project do
@@ -56,14 +56,14 @@ defmodule ExGrok.MixProject do
     [
       licenses: ["MIT"],
       links: %{"GitHub" => @source_url},
-      files: ~w(lib .formatter.exs mix.exs README.md LICENSE)
+      files: ~w(lib .formatter.exs mix.exs README.md CHANGELOG.md LICENSE)
     ]
   end
 
   defp docs do
     [
       main: "ExGrok",
-      extras: ["README.md"],
+      extras: ["README.md", "CHANGELOG.md"],
       groups_for_modules: [
         "REST API": [
           ExGrok.Chat,

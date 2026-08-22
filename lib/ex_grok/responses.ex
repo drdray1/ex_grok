@@ -47,7 +47,21 @@ defmodule ExGrok.Responses do
   @type client :: Req.Request.t()
   @type response :: {:ok, map()} | {:error, term()}
 
-  @allowed_opts ~w(temperature top_p max_output_tokens reasoning reasoning_effort tools tool_choice parallel_tool_calls previous_response_id store background instructions response_format)a
+  @allowed_opts ~w(temperature top_p max_output_tokens reasoning reasoning_effort tools tool_choice parallel_tool_calls previous_response_id store background instructions text extra_params)a
+
+  # Options that belong to /v1/chat/completions, mapped to the Responses
+  # equivalent. `Keyword.take/2` used to drop these silently, which is worse
+  # than a 400 — the request succeeds and quietly ignores what you asked for.
+  @chat_only_opts %{
+    response_format: :text,
+    max_tokens: :max_output_tokens,
+    max_completion_tokens: :max_output_tokens,
+    messages: :input,
+    stop: nil,
+    n: nil,
+    search_parameters: nil,
+    deferred: nil
+  }
 
   # Output item types that represent a server-side (agentic) tool invocation.
   @server_tool_call_types ~w(web_search_call x_search_call code_execution_call code_interpreter_call collections_search_call file_search_call image_generation_call)
@@ -57,13 +71,19 @@ defmodule ExGrok.Responses do
 
   Supported keys mirror the xAI Responses API: `"model"`, `"input"`, `"tools"`,
   `"tool_choice"`, `"reasoning"`, `"max_output_tokens"`, `"temperature"`,
-  `"previous_response_id"`, `"store"`, `"instructions"`.
+  `"previous_response_id"`, `"store"`, `"instructions"`, `"text"`.
+
+  Structured output goes under `"text"` -> `"format"`; see `json_schema_text/3`.
+  A top-level `"response_format"` raises, because the API would reject it with a
+  400 that does not say which library call was wrong.
   """
   @spec create(client(), map()) :: response()
   def create(client, %{} = params) do
-    client
-    |> Req.post(url: "/responses", json: params)
-    |> Client.handle_response()
+    with :ok <- validate_params(params) do
+      client
+      |> Req.post(url: "/responses", json: params)
+      |> Client.handle_response()
+    end
   end
 
   @doc """
@@ -75,7 +95,10 @@ defmodule ExGrok.Responses do
     - `:reasoning` — Responses-native map, e.g. `%{"effort" => "high"}`
     - `:reasoning_effort` — convenience; wrapped into `reasoning: %{effort: ...}`
     - `:tools`, `:tool_choice`, `:parallel_tool_calls`
-    - `:previous_response_id`, `:store`, `:instructions`, `:response_format`
+    - `:previous_response_id`, `:store`, `:instructions`
+    - `:text` — structured output; see `json_schema_text/3`
+    - `:extra_params` — a map merged verbatim into the body, for API
+      parameters this client does not know about yet
   """
   @spec create(client(), String.t(), String.t() | list(), keyword()) :: response()
   def create(client, model, input, opts \\ []) do
@@ -90,8 +113,26 @@ defmodule ExGrok.Responses do
   """
   @spec stream(client(), map(), (map() -> any())) :: :ok | {:error, term()}
   def stream(client, %{} = params, callback) when is_function(callback, 1) do
-    params = Map.put(params, "stream", true)
+    with :ok <- validate_params(params) do
+      do_stream(client, Map.put(params, "stream", true), callback)
+    end
+  end
 
+  @doc """
+  Streams a response from a model, an `input`, and options — the streaming twin
+  of `create/4`.
+
+  Without this arity, streaming callers had to hand-assemble the params map,
+  which is exactly the population most likely to copy the chat-completions
+  structured-output shape and get a 400.
+  """
+  @spec stream(client(), String.t(), String.t() | list(), (map() -> any()), keyword()) ::
+          :ok | {:error, term()}
+  def stream(client, model, input, callback, opts \\ []) when is_function(callback, 1) do
+    stream(client, build_params(model, input, opts), callback)
+  end
+
+  defp do_stream(client, params, callback) do
     into_fn = fn {:data, data}, {req, resp} ->
       data
       |> ExGrok.Streaming.parse_sse()
@@ -189,9 +230,11 @@ defmodule ExGrok.Responses do
   """
   @spec compact(client(), map()) :: response()
   def compact(client, %{} = params) do
-    client
-    |> Req.post(url: "/responses/compact", json: params)
-    |> Client.handle_response()
+    with :ok <- validate_params(params) do
+      client
+      |> Req.post(url: "/responses/compact", json: params)
+      |> Client.handle_response()
+    end
   end
 
   # ===========================================================================
@@ -437,17 +480,40 @@ defmodule ExGrok.Responses do
   end
 
   @doc """
-  A `response_format` value requesting strict JSON-schema structured output.
+  A `text.format` value requesting strict JSON-schema structured output.
 
-  Pass as `response_format: json_schema_format("name", schema)`. `opts` accepts
-  `strict:` (default `true`) and `description:`.
+  The Responses API takes this **flat** — `name`, `schema` and `strict` sit
+  beside `type`. Chat completions nests the same fields under a `"json_schema"`
+  key instead; `ExGrok.Chat.json_schema_format/3` builds that one. Sending
+  either shape to the other endpoint is a 400.
+
+  Usually you want `json_schema_text/3`, which wraps this for the `:text`
+  option. Reach for this directly only when composing a `text` object that
+  carries sibling keys alongside `"format"`.
+
+  `opts` accepts `strict:` (default `true`) and `description:`.
   """
-  def json_schema_format(name, schema, opts \\ []) do
-    json_schema =
-      %{"name" => name, "schema" => schema, "strict" => Keyword.get(opts, :strict, true)}
-      |> maybe_put_string("description", Keyword.get(opts, :description))
+  def json_schema(name, schema, opts \\ []) do
+    %{
+      "type" => "json_schema",
+      "name" => name,
+      "schema" => schema,
+      "strict" => Keyword.get(opts, :strict, true)
+    }
+    |> maybe_put_string("description", Keyword.get(opts, :description))
+  end
 
-    %{"type" => "json_schema", "json_schema" => json_schema}
+  @doc """
+  A ready-to-pass `:text` option for strict JSON-schema structured output.
+
+      create(client, model, input, text: json_schema_text("campaign", schema))
+
+  Exists so the `"format"` wrapper cannot be forgotten — omitting it sends
+  `%{"text" => %{"type" => "json_schema", ...}}`, which is the same class of
+  400 this function exists to prevent, one level down.
+  """
+  def json_schema_text(name, schema, opts \\ []) do
+    %{"format" => json_schema(name, schema, opts)}
   end
 
   # ===========================================================================
@@ -464,6 +530,9 @@ defmodule ExGrok.Responses do
   defp maybe_put_string(map, key, value), do: Map.put(map, key, value)
 
   defp build_params(model, input, opts) do
+    validate_opts!(opts)
+
+    {extra, opts} = Keyword.pop(opts, :extra_params, %{})
     base = %{"model" => model, "input" => input}
 
     opts
@@ -476,6 +545,71 @@ defmodule ExGrok.Responses do
       {key, value}, acc ->
         Map.put(acc, Atom.to_string(key), value)
     end)
+    # Merged last so an escape-hatch value wins over a built one.
+    |> Map.merge(extra)
+  end
+
+  # An unknown option used to vanish inside `Keyword.take/2`. That is quieter
+  # than the bug this module was fixed for: no 400, no warning, just a request
+  # that silently ignores what the caller asked for. `:extra_params` keeps the
+  # strictness from being a dead end when xAI ships a parameter we do not know.
+  defp validate_opts!(opts) do
+    Enum.each(opts, fn {key, _value} ->
+      unless key in @allowed_opts do
+        raise ArgumentError, unknown_opt_message(key)
+      end
+    end)
+
+    if Keyword.has_key?(opts, :reasoning) and Keyword.has_key?(opts, :reasoning_effort) do
+      raise ArgumentError,
+            "pass either :reasoning or :reasoning_effort, not both — they write the " <>
+              "same \"reasoning\" key, so whichever you listed last silently wins"
+    end
+
+    :ok
+  end
+
+  defp unknown_opt_message(key) do
+    base = "unknown option #{inspect(key)} for the Responses API (/v1/responses)"
+
+    case Map.fetch(@chat_only_opts, key) do
+      {:ok, nil} ->
+        base <> ". It is a /v1/chat/completions option with no Responses equivalent."
+
+      {:ok, replacement} ->
+        base <>
+          ". It is a /v1/chat/completions option; on this endpoint use " <>
+          "#{inspect(replacement)}." <> response_format_hint(key)
+
+      :error ->
+        base <>
+          ". Allowed: #{Enum.map_join(Enum.sort(@allowed_opts), ", ", &inspect/1)}. " <>
+          "Pass unrecognised API parameters through :extra_params."
+    end
+  end
+
+  defp response_format_hint(:response_format) do
+    "\n\nStructured output differs between the two endpoints:\n" <>
+      "    text: ExGrok.Responses.json_schema_text(\"name\", schema)   # flat, under text.format\n" <>
+      "    response_format: ExGrok.Chat.json_schema_format(\"name\", schema)  # nested, chat only"
+  end
+
+  defp response_format_hint(_key), do: ""
+
+  # Raw params maps are the escape hatch for data that may come from config, a
+  # job payload or JSON, so a bad value returns a tuple rather than raising —
+  # `create/2` and friends publish `{:ok, _} | {:error, _}` and callers forward
+  # external input through them.
+  defp validate_params(%{} = params) do
+    if Map.has_key?(params, "response_format") do
+      {:error,
+       {:invalid_params,
+        "\"response_format\" is a /v1/chat/completions parameter and is rejected by " <>
+          "/v1/responses. Put structured output under \"text\" => %{\"format\" => ...}; " <>
+          "ExGrok.Responses.json_schema_text/3 builds it."}}
+    else
+      :ok
+    end
   end
 
   defp blank_to_nil(""), do: nil
