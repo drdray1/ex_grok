@@ -126,11 +126,11 @@ defmodule ExGrok.Client do
       {:ok, %Req.Response{status: 200, body: body}} ->
         {:ok, body}
 
-      {:ok, %Req.Response{status: 401}} ->
-        {:error, :unauthorized}
+      {:ok, %Req.Response{status: 401, body: body}} ->
+        {:error, {:unauthorized, extract_error_message(body)}}
 
-      {:ok, %Req.Response{status: 403}} ->
-        {:error, :forbidden}
+      {:ok, %Req.Response{status: 403, body: body}} ->
+        {:error, {:forbidden, extract_error_message(body)}}
 
       {:ok, %Req.Response{status: status, body: body}} ->
         {:error, {:api_error, status, extract_error_message(body)}}
@@ -149,11 +149,11 @@ defmodule ExGrok.Client do
       {:ok, %Req.Response{status: 200}} ->
         :ok
 
-      {:ok, %Req.Response{status: 401}} ->
-        {:error, :unauthorized}
+      {:ok, %Req.Response{status: 401, body: body}} ->
+        {:error, {:unauthorized, extract_error_message(body)}}
 
-      {:ok, %Req.Response{status: 403}} ->
-        {:error, :forbidden}
+      {:ok, %Req.Response{status: 403, body: body}} ->
+        {:error, {:forbidden, extract_error_message(body)}}
 
       {:ok, %Req.Response{status: status}} ->
         {:error, {:unexpected_status, status}}
@@ -189,20 +189,25 @@ defmodule ExGrok.Client do
     {:ok, body}
   end
 
-  def handle_response({:ok, %Req.Response{status: 401}}) do
-    {:error, :unauthorized}
+  # These four used to return a bare atom and discard the body — for exactly the
+  # statuses whose body you most need. A real 403 from xAI reads "Your newly
+  # created team doesn't have any credits or licenses yet. You can purchase
+  # those on https://console.x.ai/team/...": the diagnosis and the fix, thrown
+  # away, leaving callers to reach for curl.
+  def handle_response({:ok, %Req.Response{status: 401, body: body}}) do
+    {:error, {:unauthorized, extract_error_message(body)}}
   end
 
-  def handle_response({:ok, %Req.Response{status: 403}}) do
-    {:error, :forbidden}
+  def handle_response({:ok, %Req.Response{status: 403, body: body}}) do
+    {:error, {:forbidden, extract_error_message(body)}}
   end
 
-  def handle_response({:ok, %Req.Response{status: 404}}) do
-    {:error, :not_found}
+  def handle_response({:ok, %Req.Response{status: 404, body: body}}) do
+    {:error, {:not_found, extract_error_message(body)}}
   end
 
-  def handle_response({:ok, %Req.Response{status: 429}}) do
-    {:error, :rate_limited}
+  def handle_response({:ok, %Req.Response{status: 429, body: body}}) do
+    {:error, {:rate_limited, extract_error_message(body)}}
   end
 
   def handle_response({:ok, %Req.Response{status: status, body: body}}) when status >= 400 do

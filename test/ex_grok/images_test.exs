@@ -53,7 +53,7 @@ defmodule ExGrok.ImagesTest do
       end)
 
       client = Fixtures.test_client(@stub_name)
-      assert {:error, :unauthorized} = Images.generate(client, "A cat")
+      assert {:error, {:unauthorized, _}} = Images.generate(client, "A cat")
     end
   end
 

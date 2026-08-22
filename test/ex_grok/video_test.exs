@@ -74,7 +74,7 @@ defmodule ExGrok.VideoTest do
       end)
 
       client = Fixtures.test_client(@stub_name)
-      assert {:error, :not_found} = Video.poll(client, "vid-req-1", interval_ms: 1)
+      assert {:error, {:not_found, _}} = Video.poll(client, "vid-req-1", interval_ms: 1)
     end
   end
 

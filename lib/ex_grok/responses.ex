@@ -51,11 +51,27 @@ defmodule ExGrok.Responses do
   # The full documented parameter set for POST /v1/responses. Making the
   # allowlist strict turned every omission from a silent drop into a hard
   # blocker, so it has to match the API rather than just the parts we use.
-  @allowed_opts ~w(temperature top_p top_k min_p max_output_tokens max_turns reasoning reasoning_effort tools tool_choice parallel_tool_calls previous_response_id store background instructions text search_parameters include metadata truncation user service_tier prompt_cache_key context_management logprobs top_logprobs extra_params)a
+  @allowed_opts ~w(temperature top_p top_k min_p max_output_tokens max_turns reasoning reasoning_effort tools tool_choice parallel_tool_calls previous_response_id store instructions text include truncation user service_tier prompt_cache_key context_management logprobs top_logprobs extra_params)a
 
   # Options that belong to /v1/chat/completions, mapped to the Responses
   # equivalent. `Keyword.take/2` used to drop these silently, which is worse
   # than a 400 — the request succeeds and quietly ignores what you asked for.
+  # Parameters the API advertises but refuses. Established by calling it, not by
+  # reading the reference — which is wrong about these in both directions: it
+  # marks `truncation` "Not supported" (accepted in practice) and `metadata` the
+  # same way (a hard 400).
+  @rejected_opts %{
+    background:
+      "/v1/responses rejects it outright (400 \"Argument not supported\"), despite " <>
+        "documenting it. For asynchronous work use ExGrok.Chat with `deferred: true` " <>
+        "and `ExGrok.Chat.get_deferred/2`, which does work. `poll/3` and `get/2` " <>
+        "remain valid for `store: true` retrieval.",
+    metadata: "/v1/responses rejects it outright (400 \"Argument not supported\").",
+    search_parameters:
+      "Live search is deprecated and returns 410 on both endpoints. Use the Agent " <>
+        "Tools API instead — `web_search_tool/1` and `x_search_tool/1` via `tools:`."
+  }
+
   @chat_only_opts %{
     response_format: :text,
     max_tokens: :max_output_tokens,
@@ -148,11 +164,11 @@ defmodule ExGrok.Responses do
       {:ok, %Req.Response{status: status}} when status in 200..299 ->
         :ok
 
-      {:ok, %Req.Response{status: 401}} ->
-        {:error, :unauthorized}
+      {:ok, %Req.Response{status: 401, body: body}} ->
+        {:error, {:unauthorized, extract_stream_error(body)}}
 
-      {:ok, %Req.Response{status: 429}} ->
-        {:error, :rate_limited}
+      {:ok, %Req.Response{status: 429, body: body}} ->
+        {:error, {:rate_limited, extract_stream_error(body)}}
 
       {:ok, %Req.Response{status: status, body: body}} when status >= 400 ->
         {:error, {:api_error, status, extract_stream_error(body)}}
@@ -169,8 +185,9 @@ defmodule ExGrok.Responses do
   @doc """
   Retrieves a stored response by id (`GET /responses/:id`).
 
-  Works for responses created with `store: true` or `background: true`. A
-  background response that is not finished yet comes back with
+  Works for responses created with `store: true`. (`background: true` is
+  rejected by the API — see `@rejected_opts`.) A stored response that is not
+  finished yet comes back with
   `"status" => "queued"`/`"in_progress"`.
   """
   @spec get(client(), String.t()) :: response()
@@ -557,6 +574,8 @@ defmodule ExGrok.Responses do
   # that silently ignores what the caller asked for. `:extra_params` keeps the
   # strictness from being a dead end when xAI ships a parameter we do not know.
   defp validate_opts!(opts) do
+    Options.reject!(opts, @rejected_opts)
+
     Options.validate!(
       opts,
       @allowed_opts,

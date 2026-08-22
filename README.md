@@ -2,14 +2,14 @@
 
 Elixir client for the [xAI Grok API](https://docs.x.ai/).
 
-Covers the full xAI surface: chat completions, the agentic Responses API (server-side + MCP tools, structured output, vision, stateful/background), image and video generation, audio (TTS/STT), the realtime Voice Agent (WebSocket), Files & Collections storage, models, and per-request usage/cost stats.
+Covers the full xAI surface: chat completions, the agentic Responses API (server-side + MCP tools, structured output, vision, stateful), image and video generation, audio (TTS/STT), the realtime Voice Agent (WebSocket), Files & Collections storage, models, and per-request usage/cost stats.
 
 ## Installation
 
 ```elixir
 def deps do
   [
-    {:ex_grok, git: "https://github.com/drdray1/ex_grok.git", tag: "0.6.2"}
+    {:ex_grok, git: "https://github.com/drdray1/ex_grok.git", tag: "0.6.3"}
   ]
 end
 ```
@@ -139,7 +139,7 @@ ExGrok.Responses.create(client, "grok-4.5", [
 ])
 ```
 
-### Stateful & background responses
+### Stateful responses
 
 ```elixir
 # Stateful chaining — no need to resend history:
@@ -147,13 +147,15 @@ ExGrok.Responses.create(client, "grok-4.5", [
 {:ok, r2} = ExGrok.Responses.create(client, "grok-4.5", next_input,
   previous_response_id: ExGrok.Responses.extract_response_id(r1))
 
-# Background (async) — create, then poll to completion:
-{:ok, bg} = ExGrok.Responses.create(client, "grok-4.5", input, background: true)
-{:ok, done} = ExGrok.Responses.poll(client, ExGrok.Responses.extract_response_id(bg))
-
 ExGrok.Responses.get(client, id)     # fetch a stored response
 ExGrok.Responses.delete(client, id)  # delete a stored response
+ExGrok.Responses.poll(client, id)    # poll a stored response to a terminal status
 ```
+
+> **No background/async on this endpoint.** xAI documents `background` on
+> `/v1/responses` but rejects it — `400 "Argument not supported: background"`.
+> `ExGrok.Responses` raises on it and points here. For asynchronous work use
+> chat completions' deferred flow below, which does work.
 
 Chat completions have an equivalent deferred flow:
 
@@ -423,7 +425,7 @@ ExGrok.Responses.create(client, "grok-4.5", input, extra_params: %{"new_param" =
 | Module | Description |
 |--------|-------------|
 | `ExGrok.Chat` | Chat completions with streaming, reasoning, and deferred results |
-| `ExGrok.Responses` | Responses API — agentic tools (incl. MCP), structured output, vision, stateful/background |
+| `ExGrok.Responses` | Responses API — agentic tools (incl. MCP), structured output, vision, stateful |
 | `ExGrok.Usage` | Typed token/cost accessors normalizing both API surfaces |
 | `ExGrok.Models` | Model listing and retrieval |
 | `ExGrok.Images` | Image generation and editing |

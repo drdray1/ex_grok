@@ -39,7 +39,7 @@ defmodule ExGrok.ChatTest do
 
       client = Fixtures.test_client(@stub_name)
 
-      assert {:error, :unauthorized} =
+      assert {:error, {:unauthorized, _}} =
                Chat.create_completion(client, %{
                  "model" => "grok-3-mini",
                  "messages" => [%{"role" => "user", "content" => "Hello"}]
@@ -55,7 +55,7 @@ defmodule ExGrok.ChatTest do
 
       client = Fixtures.test_client(@stub_name)
 
-      assert {:error, :rate_limited} =
+      assert {:error, {:rate_limited, _}} =
                Chat.create_completion(client, %{
                  "model" => "grok-3-mini",
                  "messages" => [%{"role" => "user", "content" => "Hello"}]
@@ -415,7 +415,7 @@ defmodule ExGrok.ChatTest do
 
         client = Fixtures.test_client(@stub_name)
 
-        assert {:error, ^expected} =
+        assert {:error, {^expected, _}} =
                  Chat.stream_completion(
                    client,
                    %{"model" => "grok-3-mini", "messages" => []},

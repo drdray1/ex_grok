@@ -27,7 +27,7 @@ defmodule ExGrok.ModelsTest do
       end)
 
       client = Fixtures.test_client(@stub_name)
-      assert {:error, :unauthorized} = Models.list_models(client)
+      assert {:error, {:unauthorized, _}} = Models.list_models(client)
     end
   end
 
@@ -52,7 +52,7 @@ defmodule ExGrok.ModelsTest do
       end)
 
       client = Fixtures.test_client(@stub_name)
-      assert {:error, :not_found} = Models.get_model(client, "nonexistent")
+      assert {:error, {:not_found, _}} = Models.get_model(client, "nonexistent")
     end
   end
 

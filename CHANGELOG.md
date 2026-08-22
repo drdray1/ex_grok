@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.6.3
+
+Everything here came from calling the API instead of reading its reference. The
+reference is wrong in both directions, and 0.6.2's allowlist trusted it.
+
+### Breaking
+
+- **`background` is removed.** `/v1/responses` answers
+  `400 "Argument not supported: background"`, so the documented background/async
+  feature never worked for anyone. `poll/3`, `get/2` and `delete/2` stay — they
+  are valid for `store: true` retrieval — but stop being described as an async
+  mechanism. For asynchronous work use `ExGrok.Chat` with `deferred: true` and
+  `get_deferred/2`, which is verified working.
+- **`metadata` is removed** from the Responses allowlist: also a hard
+  `400 "Argument not supported"`, though the reference merely calls it
+  "maintained for compatibility".
+- **`search_parameters` is removed from both modules.** Live search is retired:
+  `410 "Live search is deprecated. Please switch to the Agent Tools API"`. Use
+  `web_search_tool/1` / `x_search_tool/1` via `tools:` instead.
+- **`401`, `403`, `404` and `429` now carry the API's message** —
+  `{:error, {:forbidden, message}}` rather than `{:error, :forbidden}`. These
+  were the only statuses whose body was discarded, and they are the ones where
+  it matters: a real 403 here reads *"Your newly created team doesn't have any
+  credits or licenses yet. You can purchase those on https://console.x.ai/team/…"* —
+  the diagnosis and the fix, previously thrown away.
+
+`truncation` stays allowed despite the reference calling it unsupported; the API
+accepts it. That asymmetry with `metadata` is precisely why these were tested
+rather than inferred.
+
+### Fixed
+
+- `responses_test.exs` asserted that `background: true` reached the request
+  body. True, and worthless — a wire-shape assertion cannot tell you the server
+  refused it, and the test locked in a feature that always failed. Inverted.
+
 ## 0.6.2
 
 Corrects the allowlist that 0.6.0 made strict. Turning it into a raising

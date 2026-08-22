@@ -36,6 +36,25 @@ defmodule ExGrok.Options do
   end
 
   @doc """
+  Raises for options the API advertises but refuses, with per-option guidance.
+
+  Separate from `validate!/5` because "this option is dead" needs a different
+  answer than "this option belongs to the other endpoint" — the generic message
+  would imply a different spelling exists.
+  """
+  @spec reject!(keyword(), map()) :: :ok
+  def reject!(opts, rejected) do
+    Enum.each(opts, fn {key, _value} ->
+      case Map.fetch(rejected, key) do
+        {:ok, reason} -> raise ArgumentError, "#{inspect(key)} is not usable: " <> reason
+        :error -> :ok
+      end
+    end)
+
+    :ok
+  end
+
+  @doc """
   Splits `:extra_params` off the option list.
 
   The escape hatch that keeps a strict allowlist from becoming a dead end the

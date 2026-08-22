@@ -38,7 +38,7 @@ defmodule ExGrok.Chat do
   @type client :: Req.Request.t()
   @type response :: {:ok, map()} | {:error, term()}
 
-  @allowed_opts ~w(temperature top_p max_tokens max_completion_tokens stop n reasoning_effort response_format tools tool_choice parallel_tool_calls search_parameters deferred extra_params)a
+  @allowed_opts ~w(temperature top_p max_tokens max_completion_tokens stop n reasoning_effort response_format tools tool_choice parallel_tool_calls deferred extra_params)a
 
   # Options belonging to /v1/responses, mapped to the chat-completions
   # equivalent. The mirror of @chat_only_opts in ExGrok.Responses: a Responses
@@ -152,11 +152,11 @@ defmodule ExGrok.Chat do
       {:ok, %Req.Response{status: status}} when status in 200..299 ->
         :ok
 
-      {:ok, %Req.Response{status: 401}} ->
-        {:error, :unauthorized}
+      {:ok, %Req.Response{status: 401, body: body}} ->
+        {:error, {:unauthorized, extract_stream_error(body)}}
 
-      {:ok, %Req.Response{status: 429}} ->
-        {:error, :rate_limited}
+      {:ok, %Req.Response{status: 429, body: body}} ->
+        {:error, {:rate_limited, extract_stream_error(body)}}
 
       {:ok, %Req.Response{status: status, body: body}} when status >= 400 ->
         {:error, {:api_error, status, extract_stream_error(body)}}
@@ -377,7 +377,16 @@ defmodule ExGrok.Chat do
   # Private Helpers
   # ===========================================================================
 
+  # Live search returns 410 on this endpoint too.
+  @rejected_opts %{
+    search_parameters:
+      "Live search is deprecated and now returns 410 on both endpoints. Use the " <>
+        "Agent Tools API instead — see ExGrok.Responses.web_search_tool/1."
+  }
+
   defp build_params(model, messages, opts) do
+    Options.reject!(opts, @rejected_opts)
+
     Options.validate!(
       opts,
       @allowed_opts,

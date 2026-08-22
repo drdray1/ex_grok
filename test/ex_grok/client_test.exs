@@ -45,22 +45,22 @@ defmodule ExGrok.ClientTest do
     end
 
     test "handles 401 unauthorized" do
-      assert {:error, :unauthorized} =
+      assert {:error, {:unauthorized, _}} =
                Client.handle_response({:ok, %Req.Response{status: 401, body: %{}}})
     end
 
     test "handles 403 forbidden" do
-      assert {:error, :forbidden} =
+      assert {:error, {:forbidden, _}} =
                Client.handle_response({:ok, %Req.Response{status: 403, body: %{}}})
     end
 
     test "handles 404 not found" do
-      assert {:error, :not_found} =
+      assert {:error, {:not_found, _}} =
                Client.handle_response({:ok, %Req.Response{status: 404, body: %{}}})
     end
 
     test "handles 429 rate limited" do
-      assert {:error, :rate_limited} =
+      assert {:error, {:rate_limited, _}} =
                Client.handle_response({:ok, %Req.Response{status: 429, body: %{}}})
     end
 
@@ -114,7 +114,7 @@ defmodule ExGrok.ClientTest do
         conn |> Plug.Conn.put_status(403) |> Req.Test.json(%{})
       end)
 
-      assert {:error, :forbidden} = Client.healthcheck(Fixtures.test_client(@stub_name))
+      assert {:error, {:forbidden, _}} = Client.healthcheck(Fixtures.test_client(@stub_name))
     end
 
     test "maps unexpected status" do
@@ -135,7 +135,7 @@ defmodule ExGrok.ClientTest do
         conn |> Plug.Conn.put_status(401) |> Req.Test.json(%{})
       end)
 
-      assert {:error, :unauthorized} = Client.healthcheck(Fixtures.test_client(@stub_name))
+      assert {:error, {:unauthorized, _}} = Client.healthcheck(Fixtures.test_client(@stub_name))
     end
   end
 
@@ -158,7 +158,7 @@ defmodule ExGrok.ClientTest do
       end)
 
       client = Fixtures.test_client(@stub_name)
-      assert {:error, :unauthorized} = Client.healthcheck(client)
+      assert {:error, {:unauthorized, _}} = Client.healthcheck(client)
     end
   end
 

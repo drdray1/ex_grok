@@ -67,21 +67,26 @@ defmodule ExGrok.LiveSmokeTest do
     # claims should come out of the docs while `background` stays in the
     # allowlist (the API does accept the key). Responses users needing async
     # would then be pointed at Chat's `deferred: true` + `get_deferred/2`.
-    assert {:ok, resp} =
-             Responses.create(ctx.client, ctx.model, "Count to three.", background: true)
+    # `background` is rejected by build_params now, so this goes through the raw
+    # map to ask the API directly. If xAI ever starts honouring it, this fails
+    # and tells us the local guard has become too strict.
+    result =
+      Responses.create(ctx.client, %{
+        "model" => ctx.model,
+        "input" => "Count to three.",
+        "background" => true
+      })
 
-    status = Responses.extract_status(resp)
-
-    assert status in ["queued", "in_progress"],
-           "background: true returned #{inspect(status)} immediately — the parameter " <>
-             "looks inert, matching xAI's \"(Unsupported)\" note. Re-check the " <>
-             "background/poll documentation in README.md and lib/ex_grok.ex."
+    assert {:error, {:api_error, 400, _}} = result,
+           "xAI now accepts background: true (got #{inspect(result)}). The guard in " <>
+             "@rejected_opts is too strict — restore the parameter and the docs."
   end
 
   test "the API still rejects the shapes we guard against", ctx do
     # If xAI ever starts accepting response_format on /v1/responses, our guard
     # becomes unnecessarily strict and this test tells us to relax it.
-    assert {:error, {:api_error, 400, message}} =
+    # 422, not 400: xAI deserializes the body before validating arguments.
+    assert {:error, {:api_error, 422, message}} =
              Responses.create(ctx.client, %{
                "model" => ctx.model,
                "input" => "hi",

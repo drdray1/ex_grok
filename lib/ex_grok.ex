@@ -182,13 +182,13 @@ defmodule ExGrok do
   @doc "Builds a remote MCP tool entry for a Responses tools array."
   defdelegate mcp_tool(server_label, server_url, opts \\ []), to: Responses
 
-  @doc "Retrieves a stored/background response by id."
+  @doc "Retrieves a stored response by id (`store: true`)."
   defdelegate get_response(client, response_id), to: Responses, as: :get
 
   @doc "Deletes a stored response by id."
   defdelegate delete_response(client, response_id), to: Responses, as: :delete
 
-  @doc "Polls a background response by id until it reaches a terminal status."
+  @doc "Polls a stored response by id until it reaches a terminal status."
   def poll_response(client, response_id, opts \\ []) do
     Responses.poll(client, response_id, opts)
   end

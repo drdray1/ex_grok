@@ -38,7 +38,7 @@ defmodule ExGrok.ResponsesTest do
 
       client = Fixtures.test_client(@stub_name)
 
-      assert {:error, :unauthorized} =
+      assert {:error, {:unauthorized, _}} =
                Responses.create(client, %{"model" => "grok-4.5", "input" => "hi"})
     end
   end
@@ -154,7 +154,7 @@ defmodule ExGrok.ResponsesTest do
 
         client = Fixtures.test_client(@stub_name)
 
-        assert {:error, ^expected} =
+        assert {:error, {^expected, _}} =
                  Responses.stream(client, %{"model" => "grok-4.5", "input" => "hi"}, fn _ ->
                    :ok
                  end)
@@ -390,7 +390,7 @@ defmodule ExGrok.ResponsesTest do
         Req.Test.json(conn, Fixtures.sample_response_text())
       end)
 
-      for opt <- [:search_parameters, :metadata, :truncation, :user, :top_k, :include] do
+      for opt <- [:truncation, :user, :top_k, :include, :min_p, :service_tier] do
         assert {:ok, _} =
                  Responses.create(Fixtures.test_client(@stub_name), "grok-4.5", "hi", [
                    {opt, "x"}
@@ -552,20 +552,30 @@ defmodule ExGrok.ResponsesTest do
     end
   end
 
-  describe "background create" do
-    test "passes background: true through build_params" do
-      Req.Test.expect(@stub_name, fn conn ->
-        {:ok, body, _conn} = Plug.Conn.read_body(conn)
-        assert Jason.decode!(body)["background"] == true
-        Req.Test.json(conn, Fixtures.sample_response_background_queued())
-      end)
+  describe "background is rejected by the API" do
+    test "background: true raises and points at the mechanism that works" do
+      # Verified against the live API: /v1/responses answers
+      # 400 "Argument not supported: background", despite documenting the
+      # parameter. The previous test here asserted the flag reached the request
+      # body — true, and worthless, because a wire-shape assertion cannot tell
+      # you the server refused it. It locked in a feature that never worked.
+      assert_raise ArgumentError, ~r/deferred: true/, fn ->
+        Responses.create(Fixtures.test_client(@stub_name), "grok-4.5", "hi", background: true)
+      end
+    end
 
-      client = Fixtures.test_client(@stub_name)
+    test "metadata and search_parameters are rejected too" do
+      # metadata: 400 "Argument not supported".
+      # search_parameters: 410 "Live search is deprecated".
+      assert_raise ArgumentError, ~r/Argument not supported/, fn ->
+        Responses.create(Fixtures.test_client(@stub_name), "grok-4.5", "hi", metadata: %{})
+      end
 
-      assert {:ok, %{"status" => "queued"}} =
-               Responses.create(client, "grok-4.5", [Responses.user_input("hi")],
-                 background: true
-               )
+      assert_raise ArgumentError, ~r/Agent Tools API/, fn ->
+        Responses.create(Fixtures.test_client(@stub_name), "grok-4.5", "hi",
+          search_parameters: %{}
+        )
+      end
     end
   end
 end
