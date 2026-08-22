@@ -51,6 +51,33 @@ defmodule ExGrok.LiveSmokeTest do
     assert is_binary(city)
   end
 
+  @tag :background
+  test "background: true is actually honoured", ctx do
+    # xAI's API reference marks `background` as "(Unsupported)". If that is
+    # accurate, this library documents a feature the API ignores — `poll/3`,
+    # `get/2`, the facade's `poll_response/3` and the README's "Stateful &
+    # background responses" section all rest on it.
+    #
+    # A wire-shape test cannot settle this: asserting the flag reaches the body
+    # says nothing about whether the server acted on it. Only a real call can,
+    # which is the whole reason this file exists.
+    #
+    # An immediate "queued"/"in_progress" means the docs are stale and the
+    # feature works. An instant "completed" means the flag is inert, and the
+    # claims should come out of the docs while `background` stays in the
+    # allowlist (the API does accept the key). Responses users needing async
+    # would then be pointed at Chat's `deferred: true` + `get_deferred/2`.
+    assert {:ok, resp} =
+             Responses.create(ctx.client, ctx.model, "Count to three.", background: true)
+
+    status = Responses.extract_status(resp)
+
+    assert status in ["queued", "in_progress"],
+           "background: true returned #{inspect(status)} immediately — the parameter " <>
+             "looks inert, matching xAI's \"(Unsupported)\" note. Re-check the " <>
+             "background/poll documentation in README.md and lib/ex_grok.ex."
+  end
+
   test "the API still rejects the shapes we guard against", ctx do
     # If xAI ever starts accepting response_format on /v1/responses, our guard
     # becomes unnecessarily strict and this test tells us to relax it.
