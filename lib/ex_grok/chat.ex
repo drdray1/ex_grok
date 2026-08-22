@@ -33,11 +33,27 @@ defmodule ExGrok.Chat do
   """
 
   alias ExGrok.Client
+  alias ExGrok.Options
 
   @type client :: Req.Request.t()
   @type response :: {:ok, map()} | {:error, term()}
 
-  @allowed_opts ~w(temperature top_p max_tokens max_completion_tokens stop n reasoning_effort response_format tools tool_choice parallel_tool_calls search_parameters deferred)a
+  @allowed_opts ~w(temperature top_p max_tokens max_completion_tokens stop n reasoning_effort response_format tools tool_choice parallel_tool_calls search_parameters deferred extra_params)a
+
+  # Options belonging to /v1/responses, mapped to the chat-completions
+  # equivalent. The mirror of @chat_only_opts in ExGrok.Responses: a Responses
+  # user moving to Chat would otherwise lose structured output silently and get
+  # prose back with a 200.
+  @responses_only_opts %{
+    text: :response_format,
+    max_output_tokens: :max_tokens,
+    input: :messages,
+    instructions: nil,
+    store: nil,
+    background: nil,
+    previous_response_id: nil,
+    reasoning: :reasoning_effort
+  }
 
   @doc """
   Creates a chat completion with a params map.
@@ -67,9 +83,11 @@ defmodule ExGrok.Chat do
   """
   @spec create_completion(client(), map()) :: response()
   def create_completion(client, %{} = params) do
-    client
-    |> Req.post(url: "/chat/completions", json: params)
-    |> Client.handle_response()
+    with :ok <- validate_params(params) do
+      client
+      |> Req.post(url: "/chat/completions", json: params)
+      |> Client.handle_response()
+    end
   end
 
   @doc """
@@ -118,8 +136,12 @@ defmodule ExGrok.Chat do
   """
   @spec stream_completion(client(), map(), (map() -> any())) :: :ok | {:error, term()}
   def stream_completion(client, %{} = params, callback) when is_function(callback, 1) do
-    params = Map.put(params, "stream", true)
+    with :ok <- validate_params(params) do
+      do_stream_completion(client, Map.put(params, "stream", true), callback)
+    end
+  end
 
+  defp do_stream_completion(client, params, callback) do
     into_fn = fn {:data, data}, {req, resp} ->
       chunks = ExGrok.Streaming.parse_sse(data)
       Enum.each(chunks, callback)
@@ -356,6 +378,15 @@ defmodule ExGrok.Chat do
   # ===========================================================================
 
   defp build_params(model, messages, opts) do
+    Options.validate!(
+      opts,
+      @allowed_opts,
+      @responses_only_opts,
+      "the Chat Completions API (/v1/chat/completions)",
+      %{text: Options.structured_output_hint()}
+    )
+
+    {extra, opts} = Options.pop_extra(opts)
     base = %{"model" => model, "messages" => messages}
 
     opts
@@ -364,6 +395,23 @@ defmodule ExGrok.Chat do
     |> Enum.reduce(base, fn {key, value}, acc ->
       Map.put(acc, Atom.to_string(key), value)
     end)
+    # Merged last so an escape-hatch value wins over a built one.
+    |> Map.merge(extra)
+  end
+
+  # The raw-map mirror of the option guard. Maps carry data that may come from
+  # config or a job payload, so this returns rather than raises — matching the
+  # published {:ok, _} | {:error, _} contract.
+  defp validate_params(%{} = params) do
+    if Map.has_key?(params, "text") do
+      {:error,
+       {:invalid_params,
+        "\"text\" is a /v1/responses parameter and is ignored by " <>
+          "/v1/chat/completions. Structured output here goes under " <>
+          "\"response_format\"; ExGrok.Chat.json_schema_format/3 builds it."}}
+    else
+      :ok
+    end
   end
 
   defp extract_stream_error(body) when is_map(body) do

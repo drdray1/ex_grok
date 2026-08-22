@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.6.1
+
+**Corrects a false claim in 0.6.0.** Its README, changelog and release notes all
+said *both* `ExGrok.Chat` and `ExGrok.Responses` validate their keyword options
+and support `:extra_params`. Only `Responses` did. On `Chat`, `text:`,
+`max_output_tokens:` and `extra_params:` were still silently discarded — the
+exact bug class 0.6.0 set out to kill, and the direction that matters most: a
+Responses user moving to Chat lost structured output and got prose back with a
+200.
+
+Documentation promising a guardrail that is not there is worse than no
+guardrail, because it stops people checking.
+
+- `ExGrok.Chat` now validates options and raises `ArgumentError` on unknown
+  ones, naming the chat equivalent for Responses-only spellings
+  (`text` → `response_format`, `max_output_tokens` → `max_tokens`).
+- `ExGrok.Chat` supports `:extra_params`.
+- `Chat.create_completion/2` and `stream_completion/3` reject a raw params map
+  carrying a top-level `"text"`, mirroring the guard `Responses` already had.
+- The shared logic moved to `ExGrok.Options` so the two sides cannot drift
+  again — the drift is what produced this.
+
+The suite missed it because the tests were asymmetric in the same way as the
+code: `responses_test.exs` had a full option-validation block, `chat_test.exs`
+had none. That block now exists on both sides.
+
 ## 0.6.0
 
 Structured output on the Responses API never worked. This release fixes it, and

@@ -281,6 +281,75 @@ defmodule ExGrok.ChatTest do
     end
   end
 
+  describe "option validation" do
+    # The mirror of the Responses block. 0.6.0 documented this validation for
+    # both modules and shipped it only on Responses; the suite missed it because
+    # the tests were asymmetric in exactly the same way as the code.
+    test "an unknown option raises instead of vanishing" do
+      assert_raise ArgumentError, ~r/unknown option :temperatur/, fn ->
+        Chat.create_completion(Fixtures.test_client(@stub_name), "grok-3-mini", [],
+          temperatur: 0.5
+        )
+      end
+    end
+
+    test "a Responses-only option names its chat equivalent" do
+      # Losing this one silently means a 200 with prose where the caller asked
+      # for structured JSON.
+      assert_raise ArgumentError, ~r/:response_format/, fn ->
+        Chat.create_completion(Fixtures.test_client(@stub_name), "grok-3-mini", [],
+          text: %{"format" => %{}}
+        )
+      end
+
+      assert_raise ArgumentError, ~r/:max_tokens/, fn ->
+        Chat.create_completion(Fixtures.test_client(@stub_name), "grok-3-mini", [],
+          max_output_tokens: 10
+        )
+      end
+    end
+
+    test "create_completion/2 returns an error tuple for a raw map with text" do
+      assert {:error, {:invalid_params, message}} =
+               Chat.create_completion(Fixtures.test_client(@stub_name), %{
+                 "model" => "grok-3-mini",
+                 "messages" => [],
+                 "text" => %{"format" => %{}}
+               })
+
+      assert message =~ "response_format"
+    end
+
+    test "stream_completion/3 rejects it too" do
+      assert {:error, {:invalid_params, _}} =
+               Chat.stream_completion(
+                 Fixtures.test_client(@stub_name),
+                 %{"model" => "grok-3-mini", "messages" => [], "text" => %{}},
+                 fn _ -> :ok end
+               )
+    end
+
+    test "extra_params merges unknown API parameters into the body" do
+      Req.Test.expect(@stub_name, fn conn ->
+        {:ok, body, _conn} = Plug.Conn.read_body(conn)
+        params = Jason.decode!(body)
+
+        assert params["brand_new_xai_param"] == 42
+        refute Map.has_key?(params, "extra_params")
+
+        Req.Test.json(conn, Fixtures.sample_chat_completion_response())
+      end)
+
+      assert {:ok, _} =
+               Chat.create_completion(
+                 Fixtures.test_client(@stub_name),
+                 "grok-3-mini",
+                 [Chat.user_message("hi")],
+                 extra_params: %{"brand_new_xai_param" => 42}
+               )
+    end
+  end
+
   describe "stream_completion/5" do
     test "forwards options into the streamed body" do
       # Before this arity existed, the convenience streaming path hard-coded an

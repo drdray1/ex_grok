@@ -9,7 +9,7 @@ Covers the full xAI surface: chat completions, the agentic Responses API (server
 ```elixir
 def deps do
   [
-    {:ex_grok, git: "https://github.com/drdray1/ex_grok.git", tag: "0.6.0"}
+    {:ex_grok, git: "https://github.com/drdray1/ex_grok.git", tag: "0.6.1"}
   ]
 end
 ```

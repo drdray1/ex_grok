@@ -43,6 +43,7 @@ defmodule ExGrok.Responses do
   """
 
   alias ExGrok.Client
+  alias ExGrok.Options
 
   @type client :: Req.Request.t()
   @type response :: {:ok, map()} | {:error, term()}
@@ -532,7 +533,7 @@ defmodule ExGrok.Responses do
   defp build_params(model, input, opts) do
     validate_opts!(opts)
 
-    {extra, opts} = Keyword.pop(opts, :extra_params, %{})
+    {extra, opts} = Options.pop_extra(opts)
     base = %{"model" => model, "input" => input}
 
     opts
@@ -554,11 +555,15 @@ defmodule ExGrok.Responses do
   # that silently ignores what the caller asked for. `:extra_params` keeps the
   # strictness from being a dead end when xAI ships a parameter we do not know.
   defp validate_opts!(opts) do
-    Enum.each(opts, fn {key, _value} ->
-      unless key in @allowed_opts do
-        raise ArgumentError, unknown_opt_message(key)
-      end
-    end)
+    Options.validate!(
+      opts,
+      @allowed_opts,
+      @chat_only_opts,
+      "the Responses API (/v1/responses)",
+      %{
+        response_format: Options.structured_output_hint()
+      }
+    )
 
     if Keyword.has_key?(opts, :reasoning) and Keyword.has_key?(opts, :reasoning_effort) do
       raise ArgumentError,
@@ -568,33 +573,6 @@ defmodule ExGrok.Responses do
 
     :ok
   end
-
-  defp unknown_opt_message(key) do
-    base = "unknown option #{inspect(key)} for the Responses API (/v1/responses)"
-
-    case Map.fetch(@chat_only_opts, key) do
-      {:ok, nil} ->
-        base <> ". It is a /v1/chat/completions option with no Responses equivalent."
-
-      {:ok, replacement} ->
-        base <>
-          ". It is a /v1/chat/completions option; on this endpoint use " <>
-          "#{inspect(replacement)}." <> response_format_hint(key)
-
-      :error ->
-        base <>
-          ". Allowed: #{Enum.map_join(Enum.sort(@allowed_opts), ", ", &inspect/1)}. " <>
-          "Pass unrecognised API parameters through :extra_params."
-    end
-  end
-
-  defp response_format_hint(:response_format) do
-    "\n\nStructured output differs between the two endpoints:\n" <>
-      "    text: ExGrok.Responses.json_schema_text(\"name\", schema)   # flat, under text.format\n" <>
-      "    response_format: ExGrok.Chat.json_schema_format(\"name\", schema)  # nested, chat only"
-  end
-
-  defp response_format_hint(_key), do: ""
 
   # Raw params maps are the escape hatch for data that may come from config, a
   # job payload or JSON, so a bad value returns a tuple rather than raising —
