@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.6.2
+
+Corrects the allowlist that 0.6.0 made strict. Turning it into a raising
+guardrail meant every parameter missing from it became a hard blocker rather
+than a silent drop — so an incomplete list was suddenly a much bigger problem
+than it had been.
+
+- **`search_parameters` is accepted by both endpoints.** 0.6.0 classified it
+  chat-only, so `Responses.create/4` raised and told callers it belonged to the
+  other endpoint. That was wrong advice, not merely a missing entry.
+- Added the rest of the documented `POST /v1/responses` parameters, which were
+  all raising: `top_k`, `min_p`, `max_turns`, `include`, `metadata`,
+  `truncation`, `user`, `service_tier`, `prompt_cache_key`,
+  `context_management`, `logprobs`, `top_logprobs`.
+
+Checked against xAI's API reference rather than inferred — guessing at the
+parameter set is what produced the original bug.
+
 ## 0.6.1
 
 **Corrects a false claim in 0.6.0.** Its README, changelog and release notes all

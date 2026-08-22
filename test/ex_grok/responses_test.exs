@@ -382,6 +382,31 @@ defmodule ExGrok.ResponsesTest do
       end
     end
 
+    test "the documented Responses parameters are accepted, not rejected" do
+      # Making the allowlist strict turned every omission into a hard blocker.
+      # `search_parameters` in particular is accepted by BOTH endpoints, so
+      # classifying it chat-only gave callers actively wrong advice.
+      Req.Test.stub(@stub_name, fn conn ->
+        Req.Test.json(conn, Fixtures.sample_response_text())
+      end)
+
+      for opt <- [:search_parameters, :metadata, :truncation, :user, :top_k, :include] do
+        assert {:ok, _} =
+                 Responses.create(Fixtures.test_client(@stub_name), "grok-4.5", "hi", [
+                   {opt, "x"}
+                 ]),
+               "#{opt} should be accepted by /v1/responses"
+      end
+    end
+
+    test "genuinely chat-only options still raise" do
+      for opt <- [:response_format, :max_tokens, :stop] do
+        assert_raise ArgumentError, fn ->
+          Responses.create(Fixtures.test_client(@stub_name), "grok-4.5", "hi", [{opt, "x"}])
+        end
+      end
+    end
+
     test "extra_params merges unknown API parameters into the body" do
       # The escape hatch: strict validation must not block a caller when xAI
       # ships a parameter this client does not know yet.

@@ -48,7 +48,10 @@ defmodule ExGrok.Responses do
   @type client :: Req.Request.t()
   @type response :: {:ok, map()} | {:error, term()}
 
-  @allowed_opts ~w(temperature top_p max_output_tokens reasoning reasoning_effort tools tool_choice parallel_tool_calls previous_response_id store background instructions text extra_params)a
+  # The full documented parameter set for POST /v1/responses. Making the
+  # allowlist strict turned every omission from a silent drop into a hard
+  # blocker, so it has to match the API rather than just the parts we use.
+  @allowed_opts ~w(temperature top_p top_k min_p max_output_tokens max_turns reasoning reasoning_effort tools tool_choice parallel_tool_calls previous_response_id store background instructions text search_parameters include metadata truncation user service_tier prompt_cache_key context_management logprobs top_logprobs extra_params)a
 
   # Options that belong to /v1/chat/completions, mapped to the Responses
   # equivalent. `Keyword.take/2` used to drop these silently, which is worse
@@ -60,7 +63,6 @@ defmodule ExGrok.Responses do
     messages: :input,
     stop: nil,
     n: nil,
-    search_parameters: nil,
     deferred: nil
   }
 
