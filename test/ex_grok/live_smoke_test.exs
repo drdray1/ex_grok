@@ -82,10 +82,10 @@ defmodule ExGrok.LiveSmokeTest do
              "@rejected_opts is too strict — restore the parameter and the docs."
   end
 
-  test "the API still rejects the shapes we guard against", ctx do
-    # If xAI ever starts accepting response_format on /v1/responses, our guard
-    # becomes unnecessarily strict and this test tells us to relax it.
-    # 422, not 400: xAI deserializes the body before validating arguments.
+  test "a malformed text.format is reported as a deserialization error", ctx do
+    # 422 rather than 400: xAI deserializes the body before validating
+    # arguments. A sanity check on the shape, nothing more — the comment here
+    # used to claim this was the response_format tripwire, which it never was.
     assert {:error, {:api_error, 422, message}} =
              Responses.create(ctx.client, %{
                "model" => ctx.model,
@@ -94,5 +94,31 @@ defmodule ExGrok.LiveSmokeTest do
              })
 
     assert is_binary(message)
+  end
+
+  test "the API still rejects response_format on /v1/responses", ctx do
+    # The actual tripwire. It has to bypass `create/2` entirely: `validate_params/1`
+    # intercepts a top-level "response_format" and returns before any HTTP, so
+    # asking through the public API would only ever test our own guard against
+    # itself — the same tautology that let the original bug ship.
+    #
+    # If this ever stops being a 4xx, xAI has relaxed and our guard is now the
+    # thing that is wrong.
+    {:ok, response} =
+      Req.post(ctx.client,
+        url: "/responses",
+        json: %{
+          "model" => ctx.model,
+          "input" => "hi",
+          "response_format" => %{
+            "type" => "json_schema",
+            "json_schema" => %{"name" => "city", "schema" => @schema, "strict" => true}
+          }
+        }
+      )
+
+    assert response.status >= 400,
+           "xAI now accepts response_format on /v1/responses (got #{response.status}). " <>
+             "The guard in Responses.validate_params/1 has become too strict."
   end
 end
