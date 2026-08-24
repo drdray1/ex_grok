@@ -18,7 +18,7 @@ defmodule ExGrok.UsageTest do
     end
 
     test "cost_usd converts ticks to dollars", %{usage: u} do
-      assert Usage.cost_usd(u) == 0.59864
+      assert Usage.cost_usd(u) == 0.0059864
     end
 
     test "source and server-tool counts", %{usage: u} do

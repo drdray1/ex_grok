@@ -12,10 +12,10 @@ defmodule ExGrok.Usage do
 
       {:ok, resp} = ExGrok.Responses.create(client, "grok-4.5", input)
       ExGrok.Usage.reasoning_tokens(resp)   # => 594
-      ExGrok.Usage.cost_usd(resp)           # => 0.59864
+      ExGrok.Usage.cost_usd(resp)           # => 0.0059864
   """
 
-  @tick_per_usd 100_000_000
+  @tick_per_usd 10_000_000_000
 
   @doc "Prompt/input token count, or nil."
   @spec input_tokens(map()) :: non_neg_integer() | nil
@@ -50,7 +50,8 @@ defmodule ExGrok.Usage do
 
   @doc """
   Response cost in US dollars, derived from `cost_in_usd_ticks`
-  (100,000,000 ticks = $1), or nil when the field is absent.
+  (1 USD = 10,000,000,000 ticks, per the xAI cost-tracking docs), or nil
+  when the field is absent.
   """
   @spec cost_usd(map()) :: float() | nil
   def cost_usd(source) do
