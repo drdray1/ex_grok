@@ -20,15 +20,39 @@ defmodule ExGrok.Audio do
 
   Only batch (HTTP) TTS/STT are covered here; realtime streaming over
   WebSocket is a separate concern.
+
+  ## What `/v1/stt` does with options
+
+  It ignores the ones it does not recognise and answers `200`. An invented
+  parameter returns the same transcript, byte for byte, as sending nothing - so
+  a request succeeding tells you nothing about whether the option took effect.
+  That is why option names are checked here, by `ExGrok.Options`, rather than
+  left to the server: an unrecognised key would otherwise vanish twice over.
+
+  Measured 2026-08-25, and worth knowing before reaching for it:
+
+    * `vad_threshold` appears **inert** on `grok-stt`. `0.05` and `0.95` produce
+      identical output on the same audio, as does an invented parameter. It is
+      documented by xAI and accepted by the endpoint; it just does not seem to
+      do anything yet. `test/ex_grok/live_smoke_test.exs` pins this so we hear
+      about it if that changes.
+    * Long audio is transcribed in full but *written up* only in part - the
+      model emits roughly sixty to ninety words and stops, however many minutes
+      it was handed. The lever is input length, not any request parameter.
   """
 
   alias ExGrok.Client
+  alias ExGrok.Options
 
   @type client :: Req.Request.t()
   @type response :: {:ok, map()} | {:error, term()}
 
-  @tts_allowed_opts ~w(voice_id language output_format speed text_normalization with_timestamps optimize_streaming_latency)a
-  @stt_allowed_opts ~w(language format keyterm)a
+  @tts_allowed_opts ~w(voice_id language output_format speed text_normalization with_timestamps optimize_streaming_latency extra_params)a
+
+  # `format`, `filler_words`, `diarize` and `multichannel` are booleans; xAI
+  # spells the inverse-text-normalization switch `format`, not `response_format`
+  # - there is no response-shape option on this endpoint.
+  @stt_allowed_opts ~w(language format keyterm vad_threshold filler_words diarize multichannel channels audio_format sample_rate extra_params)a
   @default_stt_model "grok-stt"
 
   @doc """
@@ -46,11 +70,16 @@ defmodule ExGrok.Audio do
   """
   @spec speech(client(), String.t(), keyword()) :: {:ok, binary() | map()} | {:error, term()}
   def speech(client, text, opts \\ []) do
+    Options.validate!(opts, @tts_allowed_opts, %{}, "the Text to Speech API (/v1/tts)")
+    {extra, opts} = Options.pop_extra(opts)
+
     params =
       opts
       |> Keyword.take(@tts_allowed_opts)
       |> Enum.reject(fn {_k, v} -> is_nil(v) end)
       |> Enum.reduce(%{"text" => text}, fn {k, v}, acc -> Map.put(acc, Atom.to_string(k), v) end)
+      # Merged last so an escape-hatch value wins over a built one.
+      |> Map.merge(extra)
 
     client
     |> Req.post(url: "/tts", json: params)
@@ -76,18 +105,39 @@ defmodule ExGrok.Audio do
   ## Options
     - `:model` — STT model (default `"grok-stt"`)
     - `:language` — BCP-47 code
-    - `:format` — response format (e.g. `"json"`)
-    - `:keyterm` — bias term(s) for recognition
+    - `:format` — inverse text normalization (boolean, default `false`)
+    - `:keyterm` — bias term, or a list of them (max 100, 50 chars each)
+    - `:vad_threshold` — speech-detection threshold, `0.0`–`1.0` (default `0.5`).
+      Lower it when quiet speech shares the audio with something louder — music
+      under a radio host, say — and whole passages come back missing.
+    - `:filler_words` — keep "uh", "um", "er" (boolean, default `false`)
+    - `:diarize` — label speakers (boolean, default `false`)
+    - `:multichannel` — transcribe each channel independently (boolean)
+    - `:channels` — channel count, 2–8, for raw multichannel audio
+    - `:audio_format` — `"pcm"`, `"mulaw"` or `"alaw"`, for raw audio
+    - `:sample_rate` — Hz, for raw audio
+    - `:extra_params` — map of parameters this client does not know about,
+      merged last so it can also override one it does
+
+  Every field is sent as multipart, so values are stringified: `0.2` goes up as
+  `"0.2"` and `true` as `"true"`. A list value becomes a repeated field, which
+  is how `:keyterm` carries more than one term.
   """
   @spec transcribe(client(), tuple(), keyword()) :: response()
   def transcribe(client, source, opts \\ []) do
-    fields =
-      opts
-      |> Keyword.take(@stt_allowed_opts)
-      |> Enum.reject(fn {_k, v} -> is_nil(v) end)
-      |> Enum.map(fn {k, v} -> {Atom.to_string(k), to_string(v)} end)
+    {model, opts} = Keyword.pop(opts, :model, @default_stt_model)
 
-    fields = [{"model", Keyword.get(opts, :model, @default_stt_model)} | fields]
+    Options.validate!(opts, @stt_allowed_opts, %{}, "the Speech to Text API (/v1/stt)")
+    {extra, opts} = Options.pop_extra(opts)
+
+    extra_fields = encode_fields(extra)
+    overridden = MapSet.new(extra_fields, &elem(&1, 0))
+
+    fields =
+      [{"model", to_string(model)}]
+      |> Enum.concat(encode_fields(Keyword.take(opts, @stt_allowed_opts)))
+      |> Enum.reject(&MapSet.member?(overridden, elem(&1, 0)))
+      |> Enum.concat(extra_fields)
 
     client
     |> Req.post(url: "/stt", form_multipart: fields ++ [file_field(source)])
@@ -105,6 +155,17 @@ defmodule ExGrok.Audio do
   def extract_transcript(_), do: nil
 
   # ---------------------------------------------------------------------------
+
+  # Multipart carries strings, so every value is stringified here rather than at
+  # each call site. A list becomes repeated fields under one name - `keyterm`
+  # takes up to 100 terms, and there is no other way to spell that in multipart.
+  defp encode_fields(opts) do
+    Enum.flat_map(opts, fn
+      {_key, nil} -> []
+      {key, values} when is_list(values) -> Enum.map(values, &{to_string(key), to_string(&1)})
+      {key, value} -> [{to_string(key), to_string(value)}]
+    end)
+  end
 
   # For a remote URL we send a plain field; otherwise a multipart file part.
   defp file_field({:url, url}), do: {"url", url}

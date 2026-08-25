@@ -1,5 +1,54 @@
 # Changelog
 
+## 0.6.5
+
+`Audio` was the last module still filtering its options with a bare
+`Keyword.take/2`, which is the failure `ExGrok.Options` exists to prevent — and
+whose moduledoc has described it accurately since 0.6.0:
+
+> an unrecognised option vanishes inside `Keyword.take/2` and the request
+> succeeds having ignored what the caller asked for — quieter, and so worse,
+> than the 400 you would get for sending it.
+
+That is not hypothetical. A downstream app configured `vad_threshold` on every
+transcription for weeks. The allowlist was `~w(language format keyterm)a`, so
+the option was dropped before the request was built, and every call returned
+`200`.
+
+### Added
+
+- **STT gains the documented options**: `vad_threshold`, `filler_words`,
+  `diarize`, `multichannel`, `channels`, `audio_format`, `sample_rate`.
+- **`:extra_params` on `transcribe/3` and `speech/3`**, as Chat and Responses
+  already had. Merged last, so it can also override a field this client builds.
+  With it, the allowlist stops being a dead end the day xAI ships something new.
+- **List values become repeated multipart fields**, which is how `keyterm`
+  carries more than one term (xAI allows up to 100).
+
+### Changed
+
+- **`transcribe/3` and `speech/3` now raise `ArgumentError` on an unknown
+  option** instead of silently discarding it. This is a breaking change for
+  callers currently passing a name that does nothing — which is the point.
+
+### Notes from calling the API, not reading the reference
+
+- `/v1/stt` **accepts parameters that do not exist** and answers `200` with an
+  identical transcript. Unlike `/v1/responses`, which returns
+  `400 "Argument not supported"`, this endpoint validates nothing. A live test
+  asserting `{:ok, _}` after sending an option therefore proves nothing at all,
+  so the new STT live tests are differential: send the option, send it without,
+  compare the output.
+- **`vad_threshold` is inert on `grok-stt`.** `0.05` and `0.95` give identical
+  results on the same audio. It is in the allowlist because the endpoint takes
+  it and it may yet be wired up; the live suite pins the current behaviour so a
+  change is noticed.
+- **Long audio is under-transcribed, not under-read.** `grok-stt` reports the
+  full duration of a 499 s upload and then writes out ~82 words. The same audio
+  cut into 100 s pieces yields far more, including passages the whole-file call
+  omits entirely. Nothing in this library can fix that; callers with long audio
+  should chunk it.
+
 ## 0.6.3
 
 Everything here came from calling the API instead of reading its reference. The

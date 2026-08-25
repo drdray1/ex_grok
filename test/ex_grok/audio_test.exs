@@ -47,6 +47,16 @@ defmodule ExGrok.AudioTest do
     end
   end
 
+  describe "speech/3 option validation" do
+    test "an unknown option raises" do
+      client = Fixtures.test_client(@stub_name)
+
+      assert_raise ArgumentError, ~r/unknown option :voice/, fn ->
+        Audio.speech(client, "Hello", voice: "eve")
+      end
+    end
+  end
+
   describe "transcribe/3 (STT)" do
     test "POSTs multipart to /stt with model + file and returns transcript" do
       Req.Test.expect(@stub_name, fn conn ->
@@ -64,6 +74,82 @@ defmodule ExGrok.AudioTest do
                Audio.transcribe(client, {:content, "audiobytes", "clip.wav"}, language: "en")
 
       assert Audio.extract_transcript(resp) == "hello world"
+    end
+
+    test "tuning options reach the request body, stringified" do
+      Req.Test.expect(@stub_name, fn conn ->
+        {:ok, body, _conn} = Plug.Conn.read_body(conn)
+        assert body =~ "vad_threshold"
+        assert body =~ "0.2"
+        assert body =~ "filler_words"
+        assert body =~ "true"
+        Req.Test.json(conn, Fixtures.sample_transcript())
+      end)
+
+      client = Fixtures.test_client(@stub_name)
+
+      assert {:ok, _} =
+               Audio.transcribe(client, {:content, "bytes", "a.wav"},
+                 vad_threshold: 0.2,
+                 filler_words: true
+               )
+    end
+
+    test "a list of keyterms becomes repeated fields" do
+      Req.Test.expect(@stub_name, fn conn ->
+        {:ok, body, _conn} = Plug.Conn.read_body(conn)
+        assert body =~ "the Bull"
+        assert body =~ "KUBL"
+        # One name, two values - the only way multipart carries a list.
+        assert length(Regex.scan(~r/name="keyterm"/, body)) == 2
+        Req.Test.json(conn, Fixtures.sample_transcript())
+      end)
+
+      client = Fixtures.test_client(@stub_name)
+
+      assert {:ok, _} =
+               Audio.transcribe(client, {:content, "bytes", "a.wav"},
+                 keyterm: ["the Bull", "KUBL"]
+               )
+    end
+
+    test "an unknown option raises instead of vanishing" do
+      client = Fixtures.test_client(@stub_name)
+
+      assert_raise ArgumentError, ~r/unknown option :vadthreshold/, fn ->
+        Audio.transcribe(client, {:content, "bytes", "a.wav"}, vadthreshold: 0.2)
+      end
+    end
+
+    test "extra_params carries a parameter this client does not know" do
+      Req.Test.expect(@stub_name, fn conn ->
+        {:ok, body, _conn} = Plug.Conn.read_body(conn)
+        assert body =~ "smart_turn"
+        Req.Test.json(conn, Fixtures.sample_transcript())
+      end)
+
+      client = Fixtures.test_client(@stub_name)
+
+      assert {:ok, _} =
+               Audio.transcribe(client, {:content, "bytes", "a.wav"},
+                 extra_params: %{"smart_turn" => true}
+               )
+    end
+
+    test "extra_params overrides a field this client built" do
+      Req.Test.expect(@stub_name, fn conn ->
+        {:ok, body, _conn} = Plug.Conn.read_body(conn)
+        assert body =~ "grok-stt-next"
+        refute body =~ "grok-stt\r"
+        Req.Test.json(conn, Fixtures.sample_transcript())
+      end)
+
+      client = Fixtures.test_client(@stub_name)
+
+      assert {:ok, _} =
+               Audio.transcribe(client, {:content, "bytes", "a.wav"},
+                 extra_params: %{"model" => "grok-stt-next"}
+               )
     end
 
     test "url source sends a url field" do
