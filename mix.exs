@@ -1,7 +1,7 @@
 defmodule ExGrok.MixProject do
   use Mix.Project
 
-  @version "0.6.5"
+  @version "0.6.6"
   @source_url "https://github.com/drdray1/ex_grok"
 
   def project do

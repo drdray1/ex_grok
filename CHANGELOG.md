@@ -1,5 +1,52 @@
 # Changelog
 
+## 0.6.6
+
+Streaming dropped events, silently, and the one it dropped was usually the one
+that mattered.
+
+`parse_sse/1` was called once per HTTP chunk, but a transport chunk is not an
+event boundary. An event split across two chunks decoded as invalid JSON in both
+halves and was discarded by `{:error, _} -> []` — the stream simply appeared to
+be missing an event, with nothing logged and nothing raised.
+
+Which event goes missing is not random. Large events are the ones that span a
+boundary, and on the Responses API the largest by far is the terminal
+`response.completed`, which carries the entire response object. So the loss
+landed precisely where it is fatal: small text deltas streamed in fine, and then
+the result never arrived. A caller could only report that the stream ended
+without completing, with no way to see why.
+
+A downstream app hit this in production the moment it asked for reasoning
+summaries, which pushed the terminal frame past a chunk boundary reliably. It
+had been latent before that for any sufficiently large response.
+
+### Added
+
+- **`ExGrok.Streaming.parse_sse/2`** — takes the previous chunk's leftover and
+  returns `{events, rest}`, splitting on the blank line that actually delimits
+  SSE events. Feed `rest` back in on the next chunk.
+
+### Fixed
+
+- **`Responses.stream/3` and `Chat.stream_completion/3` no longer lose events
+  that straddle a chunk boundary.** Both thread the partial trailing event
+  through the request struct (`req.private[:sse_buffer]`).
+
+### Unchanged
+
+- **`parse_sse/1`** still behaves as before for callers that hold whole events;
+  it now delegates to `parse_sse/2` and discards the remainder. Its docs warn
+  that a streaming caller wants the two-arity version.
+
+### Notes
+
+- Regression test cuts a 5KB terminal event at byte 100: the old per-chunk parse
+  yields only the preceding delta, the buffered parse yields both. A second test
+  feeds an event one grapheme at a time.
+- Also released as **0.5.1** off the `0.5.0` tag, for consumers pinned to the
+  0.5.x line who cannot take the 0.6.x breaking changes yet.
+
 ## 0.6.5
 
 `Audio` was the last module still filtering its options with a bare
