@@ -142,10 +142,12 @@ defmodule ExGrok.Chat do
   end
 
   defp do_stream_completion(client, params, callback) do
+    # Same chunk-boundary hazard as Responses.do_stream/3: carry the partial
+    # trailing event across chunks or it is silently dropped.
     into_fn = fn {:data, data}, {req, resp} ->
-      chunks = ExGrok.Streaming.parse_sse(data)
+      {chunks, rest} = ExGrok.Streaming.parse_sse(data, req.private[:sse_buffer] || "")
       Enum.each(chunks, callback)
-      {:cont, {req, resp}}
+      {:cont, {Req.Request.put_private(req, :sse_buffer, rest), resp}}
     end
 
     case Req.post(client, url: "/chat/completions", json: params, into: into_fn) do

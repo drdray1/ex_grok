@@ -152,12 +152,15 @@ defmodule ExGrok.Responses do
   end
 
   defp do_stream(client, params, callback) do
+    # The partial trailing event rides along on the request struct between
+    # chunks. Without it, any event split across two chunks is dropped — which
+    # in practice means the big terminal `response.completed`, so the caller
+    # streams deltas happily and then never gets a result.
     into_fn = fn {:data, data}, {req, resp} ->
-      data
-      |> ExGrok.Streaming.parse_sse()
-      |> Enum.each(callback)
+      {events, rest} = ExGrok.Streaming.parse_sse(data, req.private[:sse_buffer] || "")
+      Enum.each(events, callback)
 
-      {:cont, {req, resp}}
+      {:cont, {Req.Request.put_private(req, :sse_buffer, rest), resp}}
     end
 
     case Req.post(client, url: "/responses", json: params, into: into_fn) do
