@@ -124,4 +124,58 @@ defmodule ExGrok.StreamingTest do
       assert Streaming.extract_finish_reason(%{}) == nil
     end
   end
+  describe "parse_sse/2 (chunked streams)" do
+    test "an event split across two chunks survives" do
+      {events, rest} = Streaming.parse_sse(~s(data: {"type":"a"}\n\ndata: {"ty), "")
+      assert events == [%{"type" => "a"}]
+      assert rest == ~s(data: {"ty)
+
+      assert {[%{"type" => "b"}], ""} = Streaming.parse_sse(~s(pe":"b"}\n\n), rest)
+    end
+
+    test "an event split across many chunks survives" do
+      json = ~s(data: {"type":"response.completed","response":{"output":[1,2,3]}}\n\n)
+
+      {events, rest} =
+        json
+        |> String.graphemes()
+        |> Enum.reduce({[], ""}, fn ch, {acc, buf} ->
+          {events, rest} = Streaming.parse_sse(ch, buf)
+          {acc ++ events, rest}
+        end)
+
+      assert rest == ""
+      assert [%{"type" => "response.completed", "response" => %{"output" => [1, 2, 3]}}] = events
+    end
+
+    # The prod failure this arity exists for: small deltas arrive fine, then the
+    # big terminal event straddles a chunk boundary and used to vanish, leaving
+    # the caller with a stream that never completed.
+    test "the terminal event is not lost when it straddles a boundary" do
+      big = %{"type" => "response.completed", "response" => %{"pad" => String.duplicate("x", 5_000)}}
+      wire = ~s(data: {"type":"response.output_text.delta","delta":"hi"}\n\n) <>
+               "data: " <> Jason.encode!(big) <> "\n\n"
+
+      {chunk1, chunk2} = String.split_at(wire, 100)
+
+      {first, buf} = Streaming.parse_sse(chunk1, "")
+      {second, rest} = Streaming.parse_sse(chunk2, buf)
+
+      assert [%{"type" => "response.output_text.delta"}] = first
+      assert [%{"type" => "response.completed"}] = second
+      assert rest == ""
+    end
+
+    test "a chunk ending exactly on an event boundary leaves nothing buffered" do
+      assert {[%{"a" => 1}], ""} = Streaming.parse_sse(~s(data: {"a": 1}\n\n), "")
+    end
+
+    test "the [DONE] sentinel is still filtered" do
+      assert {[], ""} = Streaming.parse_sse("data: [DONE]\n\n", "")
+    end
+
+    test "parse_sse/1 still reads whole events, ignoring any partial tail" do
+      assert [%{"a" => 1}] = Streaming.parse_sse(~s(data: {"a": 1}\n\ndata: {"b))
+    end
+  end
 end
