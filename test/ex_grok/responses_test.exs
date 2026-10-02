@@ -187,6 +187,28 @@ defmodule ExGrok.ResponsesTest do
       assert Responses.completed_response(%{}) == nil
       assert Responses.event_type(%{}) == nil
     end
+
+    test "extract_generated_images returns base64 results from image_generation_call items" do
+      response = %{
+        "output" => [
+          %{
+            "type" => "image_generation_call",
+            "id" => "ig_1",
+            "status" => "completed",
+            "result" => "aGk=",
+            "prompt" => "a red fox"
+          },
+          %{"type" => "image_generation_call", "id" => "ig_2", "status" => "in_progress"},
+          %{"type" => "message", "content" => []}
+        ]
+      }
+
+      assert Responses.extract_generated_images(response) == [
+               %{"result" => "aGk=", "prompt" => "a red fox"}
+             ]
+
+      assert Responses.extract_generated_images(%{}) == []
+    end
   end
 
   describe "server-side tool builders" do
@@ -205,6 +227,10 @@ defmodule ExGrok.ResponsesTest do
       assert Responses.x_search_tool() == %{"type" => "x_search"}
       assert Responses.code_execution_tool() == %{"type" => "code_execution"}
       assert Responses.collections_search_tool() == %{"type" => "collections_search"}
+      assert Responses.image_generation_tool() == %{"type" => "image_generation"}
+
+      assert Responses.image_generation_tool(action: "generate") ==
+               %{"type" => "image_generation", "action" => "generate"}
     end
 
     test "mcp_tool carries server_label + server_url and merges opts" do

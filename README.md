@@ -76,7 +76,7 @@ end
 ### Server-side (agentic) tools
 
 Grok runs these tools on xAI's servers — web search, X search, code execution,
-and document (collections) search — and returns citations inline:
+document (collections) search, and image generation — and returns citations inline:
 
 ```elixir
 {:ok, resp} = ExGrok.Responses.create(client, "grok-4.5", [
@@ -90,6 +90,17 @@ and document (collections) search — and returns citations inline:
 ExGrok.Responses.extract_output_text(resp)
 ExGrok.Responses.extract_citations(resp)          # => ["https://x.ai", ...]
 ExGrok.Responses.extract_server_tool_calls(resp)  # => [%{"type" => "web_search_call", ...}]
+```
+
+Grok can also generate or edit images mid-response with the `image_generation`
+tool. Results come back base64-encoded:
+
+```elixir
+{:ok, resp} = ExGrok.Responses.create(client, "grok-4.5", [
+  ExGrok.Responses.user_input("Draw a logo for a coffee shop called Byte Brew")
+], tools: [ExGrok.Responses.image_generation_tool(action: "generate")])
+
+[%{"result" => b64} | _] = ExGrok.Responses.extract_generated_images(resp)
 ```
 
 ### Structured outputs
@@ -268,18 +279,29 @@ model_ids = ExGrok.extract_model_ids(response)
 {:ok, model} = ExGrok.get_model(client, "grok-3-mini")
 ```
 
-## Image Generation
+## Image Generation (Grok Imagine)
 
 ```elixir
 {:ok, response} = ExGrok.generate_image(client, "A sunset over the ocean")
 urls = ExGrok.extract_image_urls(response)
 
-# With options
+# With options (default model: "grok-imagine-image")
 {:ok, response} = ExGrok.generate_image(client, "A cat in space",
-  model: "grok-2-image",
+  model: "grok-imagine-image-2.0",
   n: 2,
+  aspect_ratio: "16:9",
+  resolution: "2k",
+  quality: "medium",
   response_format: "b64_json"
 )
+ExGrok.extract_image_b64(response)
+
+# Edit one image, or combine several (refer to them as <IMAGE_1>, <IMAGE_2>, ...)
+{:ok, response} = ExGrok.edit_image(client, "Make the sky purple",
+  image: "https://example.com/photo.png")
+
+{:ok, response} = ExGrok.edit_image(client, "Put the cat from <IMAGE_1> on the sofa in <IMAGE_2>",
+  images: ["https://example.com/cat.png", "https://example.com/sofa.png"])
 ```
 
 ## Video Generation (Grok Imagine)
@@ -297,6 +319,21 @@ ExGrok.extract_video_url(done)
 # Image-to-video
 ExGrok.generate_video(client, "slow pan across the scene",
   image: "https://example.com/frame.jpg", resolution: "720p")
+
+# grok-imagine-video-1.5: pin the last frame and mid-video keyframes
+ExGrok.generate_video(client, "sunrise timelapse",
+  model: "grok-imagine-video-1.5",
+  image: "https://example.com/night.jpg",
+  last_frame: "https://example.com/day.jpg",
+  keyframes: [{"https://example.com/dawn.jpg", 3.0}])
+
+# Reference-to-video (1–7 reference images)
+ExGrok.generate_video(client, "the character waves hello",
+  reference_images: ["https://example.com/character.png"])
+
+# Edit or extend an existing video — poll the returned id the same way
+ExGrok.edit_video(client, "make it snow", video: "https://example.com/in.mp4")
+ExGrok.extend_video(client, "keep walking", video: "https://example.com/in.mp4", duration: 5)
 ```
 
 ## Audio (Text-to-Speech & Speech-to-Text)
@@ -428,8 +465,8 @@ ExGrok.Responses.create(client, "grok-4.5", input, extra_params: %{"new_param" =
 | `ExGrok.Responses` | Responses API — agentic tools (incl. MCP), structured output, vision, stateful |
 | `ExGrok.Usage` | Typed token/cost accessors normalizing both API surfaces |
 | `ExGrok.Models` | Model listing and retrieval |
-| `ExGrok.Images` | Image generation and editing |
-| `ExGrok.Video` | Grok Imagine video generation (async) |
+| `ExGrok.Images` | Grok Imagine image generation and editing |
+| `ExGrok.Video` | Grok Imagine video generation, editing, and extension (async) |
 | `ExGrok.Audio` | Text-to-speech and speech-to-text |
 | `ExGrok.Files` | Files API — upload/list/get/download/delete |
 | `ExGrok.Collections` | Collections management (Management API) + document search |

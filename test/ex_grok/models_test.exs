@@ -87,7 +87,8 @@ defmodule ExGrok.ModelsTest do
       known = Models.known_models()
       assert "grok-4.5" in known
       assert "grok-4-fast" in known
-      assert "grok-2-image" in known
+      assert "grok-imagine-image" in known
+      assert "grok-imagine-video" in known
     end
   end
 end

@@ -361,6 +361,22 @@ defmodule ExGrok.Responses do
   def extract_server_tool_calls(_), do: []
 
   @doc """
+  Images produced by the `image_generation` server tool.
+
+  Returns one map per `image_generation_call` output item, with `"result"`
+  (the base64-encoded image) and, when present, `"prompt"` (the prompt the
+  model wrote for the image model).
+  """
+  @spec extract_generated_images(map()) :: list(map())
+  def extract_generated_images(%{"output" => output}) when is_list(output) do
+    output
+    |> Enum.filter(&(&1["type"] == "image_generation_call" and is_binary(&1["result"])))
+    |> Enum.map(&Map.take(&1, ["result", "prompt"]))
+  end
+
+  def extract_generated_images(_), do: []
+
+  @doc """
   Decodes the response's `output_text` as JSON (for structured outputs).
 
   Returns `{:ok, term}` when the concatenated output text parses as JSON,
@@ -487,6 +503,18 @@ defmodule ExGrok.Responses do
 
   @doc "The server-side `collections_search` tool (query uploaded documents). Optional config from `opts`."
   def collections_search_tool(opts \\ []), do: server_tool("collections_search", opts)
+
+  @doc """
+  The server-side `image_generation` tool (Grok Imagine), letting the model
+  generate or edit images mid-response.
+
+  `:action` restricts it: `"auto"` (the server default; generate and edit),
+  `"generate"`, or `"edit"`. Results come back as `image_generation_call`
+  output items; `extract_generated_images/1` pulls them out.
+
+      create(client, "grok-4.5", input, tools: [image_generation_tool(action: "generate")])
+  """
+  def image_generation_tool(opts \\ []), do: server_tool("image_generation", opts)
 
   @doc """
   A **remote MCP** tool entry, connecting Grok to an external MCP server.

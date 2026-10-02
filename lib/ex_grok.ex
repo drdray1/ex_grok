@@ -251,6 +251,9 @@ defmodule ExGrok do
   @doc "Extracts image URLs from response."
   defdelegate extract_image_urls(response), to: Images
 
+  @doc "Extracts base64 image payloads from response."
+  defdelegate extract_image_b64(response), to: Images
+
   # ============================================================================
   # Video
   # ============================================================================
@@ -258,6 +261,16 @@ defmodule ExGrok do
   @doc "Starts an async video generation job; returns a request id."
   def generate_video(client, prompt, opts \\ []) do
     Video.generate(client, prompt, opts)
+  end
+
+  @doc "Starts an async edit of an existing video; returns a request id."
+  def edit_video(client, prompt, opts) do
+    Video.edit(client, prompt, opts)
+  end
+
+  @doc "Starts an async extension of an existing video; returns a request id."
+  def extend_video(client, prompt, opts) do
+    Video.extend(client, prompt, opts)
   end
 
   @doc "Retrieves a video job by id."

@@ -1,5 +1,41 @@
 # Changelog
 
+## Unreleased
+
+Grok Imagine support was a generation behind. `Images` defaulted to
+`grok-2-image` and dropped every option except `n`/`response_format`.
+`Images.edit/3` sent the source image in a shape the API doesn't use.
+`Video` sent media as bare strings where the API wants `%{"url" => ...}` objects,
+and had no route to the separate edit and extend endpoints. Request shapes were
+checked against xAI's official Python SDK and the Vercel AI SDK's xAI provider.
+
+### Added
+
+- **Images:** `:aspect_ratio`, `:resolution`, `:quality`, `:output_format`,
+  `:user` and `:storage_options` are now sent. `edit/3` takes `:images` for
+  multi-reference editing. New `extract_image_b64/1`.
+- **`Video.edit/3` and `Video.extend/3`** (`POST /videos/edits`,
+  `POST /videos/extensions`), with `ExGrok.edit_video/3` and
+  `ExGrok.extend_video/3`.
+- **Video generation options:** `:last_frame`, `:keyframes`, `:generate_audio`,
+  `:reference_audios`, `:user`, `:storage_options`.
+- **`Responses.image_generation_tool/1`** (server-side Imagine tool, with
+  `action: "auto" | "generate" | "edit"`) and
+  **`Responses.extract_generated_images/1`**.
+- Imagine model ids in `Models.known_models/0`.
+
+### Changed
+
+- **`Images` defaults to `grok-imagine-image`** (was `grok-2-image`).
+- **`Images.edit/3` sends `"image" => %{"url" => ..., "type" => "image_url"}`**
+  instead of a top-level `"image_url"`. `:image_url` still works as a deprecated
+  alias for `:image`.
+- **`Video.generate/3` wraps `:image` and `:reference_images` as
+  `%{"url" => ...}`.** Maps are passed through unchanged.
+- **`Video.generate/3` raises on `:video`.** Use `edit/3` or `extend/3`; that
+  request was going to the wrong endpoint.
+- `grok-2-image` removed from `Models.known_models/0`.
+
 ## 0.6.6
 
 Streaming dropped events, silently, and the one it dropped was usually the one
