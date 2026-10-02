@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.7.0
 
 Grok Imagine support was a generation behind. `Images` defaulted to
 `grok-2-image` and dropped every option except `n`/`response_format`.
