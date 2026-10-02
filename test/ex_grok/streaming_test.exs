@@ -124,6 +124,7 @@ defmodule ExGrok.StreamingTest do
       assert Streaming.extract_finish_reason(%{}) == nil
     end
   end
+
   describe "parse_sse/2 (chunked streams)" do
     test "an event split across two chunks survives" do
       {events, rest} = Streaming.parse_sse(~s(data: {"type":"a"}\n\ndata: {"ty), "")
@@ -152,9 +153,14 @@ defmodule ExGrok.StreamingTest do
     # big terminal event straddles a chunk boundary and used to vanish, leaving
     # the caller with a stream that never completed.
     test "the terminal event is not lost when it straddles a boundary" do
-      big = %{"type" => "response.completed", "response" => %{"pad" => String.duplicate("x", 5_000)}}
-      wire = ~s(data: {"type":"response.output_text.delta","delta":"hi"}\n\n) <>
-               "data: " <> Jason.encode!(big) <> "\n\n"
+      big = %{
+        "type" => "response.completed",
+        "response" => %{"pad" => String.duplicate("x", 5_000)}
+      }
+
+      wire =
+        ~s(data: {"type":"response.output_text.delta","delta":"hi"}\n\n) <>
+          "data: " <> Jason.encode!(big) <> "\n\n"
 
       {chunk1, chunk2} = String.split_at(wire, 100)
 
