@@ -21,6 +21,17 @@ defmodule ExGrok.Video do
 
       ExGrok.Video.generate(client, "pan across the scene",
         image: "https://example.com/frame.jpg", resolution: "720p")
+
+  ## Editing and extending
+
+  `edit/3` restyles or changes an existing video; `extend/3` continues one from
+  its last frame. Both return a `request_id` you poll exactly like `generate/3`:
+
+      {:ok, %{"request_id" => id}} =
+        ExGrok.Video.edit(client, "make it snow", video: "https://example.com/in.mp4")
+
+  Any image or video argument may be a URL string (or `data:` URI), which is
+  wrapped as `%{"url" => ...}`, or a ready-made map sent as-is.
   """
 
   alias ExGrok.Client
@@ -29,8 +40,12 @@ defmodule ExGrok.Video do
   @type response :: {:ok, map()} | {:error, term()}
 
   @default_model "grok-imagine-video"
-  @allowed_opts ~w(duration aspect_ratio resolution image reference_images video)a
   @terminal_statuses ~w(done failed expired)
+
+  # Fields forwarded verbatim (atom option -> string key) per endpoint.
+  @generate_opts ~w(duration aspect_ratio resolution generate_audio reference_audios user storage_options)a
+  @edit_opts ~w(user storage_options)a
+  @extend_opts ~w(duration storage_options)a
 
   @doc """
   Starts a video generation job (`POST /videos/generations`).
@@ -38,21 +53,80 @@ defmodule ExGrok.Video do
   Returns `{:ok, %{"request_id" => id, ...}}`.
 
   ## Options
-    - `:model` — video model (default `"grok-imagine-video"`)
+    - `:model` — video model (default `"grok-imagine-video"`; also
+      `"grok-imagine-video-1.5"`)
     - `:duration` — seconds (e.g. 1–15)
     - `:aspect_ratio` — e.g. `"16:9"`, `"9:16"`, `"1:1"`
-    - `:resolution` — `"480p"`, `"720p"`, `"1080p"`
-    - `:image` — source image URL for image-to-video
-    - `:reference_images` — list of reference image URLs
-    - `:video` — source video URL for editing/extension
+    - `:resolution` — `"480p"`, `"720p"`, or `"1080p"` (1080p needs
+      `grok-imagine-video-1.5`; reference-to-video is capped at 720p)
+    - `:generate_audio` — boolean
+    - `:image` — start image for image-to-video
+    - `:last_frame` — image to end on (`grok-imagine-video-1.5` only)
+    - `:keyframes` — up to 4 mid-video anchors as `{image, timestamp_seconds}`
+      tuples (`grok-imagine-video-1.5` only)
+    - `:reference_images` — 1–7 images for reference-to-video
+    - `:reference_audios` — up to 3 audio refs, e.g. `[%{"voice_id" => "..."}]`
+    - `:user` — end-user identifier for abuse monitoring
+    - `:storage_options` — persist to the Files API, e.g. `%{"filename" => "out.mp4"}`
+
+  To edit or extend an existing video use `edit/3` or `extend/3`.
   """
   @spec generate(client(), String.t(), keyword()) :: response()
   def generate(client, prompt, opts \\ []) do
-    params = build_params(prompt, opts)
+    if Keyword.has_key?(opts, :video) do
+      raise ArgumentError,
+            "ExGrok.Video.generate/3 no longer takes :video; use edit/3 or extend/3"
+    end
 
-    client
-    |> Req.post(url: "/videos/generations", json: params)
-    |> Client.handle_response()
+    params =
+      prompt
+      |> base_params(opts, @generate_opts)
+      |> put_ref("image", Keyword.get(opts, :image))
+      |> put_ref("last_frame", Keyword.get(opts, :last_frame))
+      |> put_refs("reference_images", Keyword.get(opts, :reference_images))
+      |> put_keyframes(Keyword.get(opts, :keyframes))
+
+    post(client, "/videos/generations", params)
+  end
+
+  @doc """
+  Starts a video edit job (`POST /videos/edits`) on an existing video.
+
+  Returns `{:ok, %{"request_id" => id, ...}}`; poll it like `generate/3`.
+
+  ## Options
+    - `:video` — source video (required)
+    - `:model`, `:user`, `:storage_options` — as for `generate/3`
+  """
+  @spec edit(client(), String.t(), keyword()) :: response()
+  def edit(client, prompt, opts) do
+    params =
+      prompt
+      |> base_params(opts, @edit_opts)
+      |> put_ref("video", Keyword.fetch!(opts, :video))
+
+    post(client, "/videos/edits", params)
+  end
+
+  @doc """
+  Starts a video extension job (`POST /videos/extensions`), continuing an
+  existing video from its last frame.
+
+  Returns `{:ok, %{"request_id" => id, ...}}`; poll it like `generate/3`.
+
+  ## Options
+    - `:video` — source video (required)
+    - `:duration` — seconds to add
+    - `:model`, `:storage_options` — as for `generate/3`
+  """
+  @spec extend(client(), String.t(), keyword()) :: response()
+  def extend(client, prompt, opts) do
+    params =
+      prompt
+      |> base_params(opts, @extend_opts)
+      |> put_ref("video", Keyword.fetch!(opts, :video))
+
+    post(client, "/videos/extensions", params)
   end
 
   @doc "Retrieves a video job by id (`GET /videos/:id`)."
@@ -110,12 +184,36 @@ defmodule ExGrok.Video do
     end
   end
 
-  defp build_params(prompt, opts) do
+  defp post(client, url, params) do
+    client
+    |> Req.post(url: url, json: params)
+    |> Client.handle_response()
+  end
+
+  defp base_params(prompt, opts, allowed) do
     base = %{"model" => Keyword.get(opts, :model, @default_model), "prompt" => prompt}
 
     opts
-    |> Keyword.take(@allowed_opts)
+    |> Keyword.take(allowed)
     |> Enum.reject(fn {_k, v} -> is_nil(v) end)
     |> Enum.reduce(base, fn {key, value}, acc -> Map.put(acc, Atom.to_string(key), value) end)
   end
+
+  defp put_ref(params, _key, nil), do: params
+  defp put_ref(params, key, ref), do: Map.put(params, key, media_ref(ref))
+
+  defp put_refs(params, _key, nil), do: params
+  defp put_refs(params, key, refs), do: Map.put(params, key, Enum.map(refs, &media_ref/1))
+
+  defp put_keyframes(params, nil), do: params
+
+  defp put_keyframes(params, keyframes) do
+    Map.put(params, "keyframes", Enum.map(keyframes, &keyframe/1))
+  end
+
+  defp keyframe({image, seconds}), do: %{"image" => media_ref(image), "timestamp_s" => seconds}
+  defp keyframe(%{} = keyframe), do: keyframe
+
+  defp media_ref(%{} = ref), do: ref
+  defp media_ref(url) when is_binary(url), do: %{"url" => url}
 end

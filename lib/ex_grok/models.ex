@@ -37,7 +37,9 @@ defmodule ExGrok.Models do
   # account-scoped list from the API.
   @known_models ~w(
     grok-4.5 grok-4 grok-4-fast grok-code-fast-1
-    grok-3 grok-3-mini grok-2-image
+    grok-3 grok-3-mini
+    grok-imagine-image grok-imagine-image-2.0 grok-imagine-image-quality
+    grok-imagine-video grok-imagine-video-1.5
   )
 
   @doc """
