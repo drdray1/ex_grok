@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.1
+
+Updated dependencies to their latest versions allowed by `mix.exs` (`mix.lock` only).
+
 ## 0.7.0
 
 Grok Imagine support was a generation behind. `Images` defaulted to
